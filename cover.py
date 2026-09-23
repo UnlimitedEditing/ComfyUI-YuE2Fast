@@ -24,6 +24,14 @@ import comfy.model_management as mm
 SHEETSAGE_RATE = 24000
 SHEETSAGE = ("m-a-p/SheetSage2", "488abe28ef4db3dbb056da19cb49d80f4b14bc61")
 MERT = ("m-a-p/MERT-v2-FullSong", "d8ba1c745e733b3908ce6ad16ebeb17ac7600a42")
+# Everything the SheetSage2 package imports (it is imported as a package, so all modules must exist).
+SHEETSAGE_FILES = ["config.json", "processor_config.json", "model.safetensors", "__init__.py"] + [
+    f"{name}.py" for name in (
+        "audio_sheetsage2", "chord_spelling_sheetsage2", "configuration_mert2", "configuration_sheetsage2",
+        "durations_sheetsage2", "exports_sheetsage2", "generation_sheetsage2", "io_sheetsage2",
+        "labels_sheetsage2", "midi_sheetsage2", "modeling_mert2", "modeling_sheetsage2", "notation_sheetsage2",
+        "pipeline_sheetsage2", "processing_sheetsage2", "rendering_sheetsage2", "schema_sheetsage2",
+        "tensors_sheetsage2", "tokenization_sheetsage2")]
 MERT_FILES = ["config.json", "configuration_mert2.py", "modeling_mert2.py", "preprocessor_config.json",
               "weights_manifest.json", "model.safetensors"]
 
@@ -122,15 +130,12 @@ def _staged(name, repo, revision, files):
     target = roots[0]
     logging.warning("YuE2Fast: %s not found locally, downloading to %s", name, target)
     from huggingface_hub import snapshot_download
-    snapshot_download(repo, revision=revision, local_dir=str(target),
-                      allow_patterns=files if files else None,
-                      ignore_patterns=None if files else ["render_assets/*", "benchmarks/*", "assets/*", "tests/*"])
+    snapshot_download(repo, revision=revision, local_dir=str(target), allow_patterns=files)
     return target
 
 
 def _load_sheetsage():
-    ss_dir = _staged("SheetSage2", *SHEETSAGE, ["config.json", "model.safetensors", "modeling_sheetsage2.py",
-                                                 "pipeline_sheetsage2.py", "notation_sheetsage2.py"])
+    ss_dir = _staged("SheetSage2", *SHEETSAGE, SHEETSAGE_FILES)
     mert_dir = _staged("MERT-v2-FullSong", *MERT, MERT_FILES)
     # Import the snapshot as a regular package instead of via trust_remote_code: transformers'
     # remote-code copier misses exports_sheetsage2 -> chord_spelling_sheetsage2 (3rd-level import).
