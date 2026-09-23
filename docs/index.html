@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YuE2 Score Studio</title>
+<meta name="description" content="View, play, rearrange and edit YuE2 song scores, then send them back for a re-render.">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/abcjs@6.4.4/abcjs-audio.css">
+<style>
+  :root {
+    --bg: #f6f5f1; --panel: #ffffff; --ink: #1d1f23; --muted: #6b6f78; --line: #e2e0da;
+    --accent: #3a5bd9; --accent-ink: #ffffff; --warn: #b4531a; --ok: #2f7d4f; --err: #b3261e;
+    --chip: #eef0fb; --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #15171b; --panel: #1d2026; --ink: #e8e9ec; --muted: #9aa0ab; --line: #2e323a;
+      --accent: #7d95ff; --accent-ink: #0e1016; --warn: #e39a5c; --ok: #6fcf97; --err: #ff8a80; --chip: #262b3a;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171b; --panel: #1d2026; --ink: #e8e9ec; --muted: #9aa0ab; --line: #2e323a;
+    --accent: #7d95ff; --accent-ink: #0e1016; --warn: #e39a5c; --ok: #6fcf97; --err: #ff8a80; --chip: #262b3a;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { padding: 20px 16px 8px; max-width: 1200px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  header p { margin: 0; color: var(--muted); }
+  main { max-width: 1200px; margin: 0 auto; padding: 8px 16px 48px; display: grid; gap: 16px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; min-width: 0; }
+  .panel h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 12px; }
+  .grid2 { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  @media (max-width: 860px) { .grid2 { grid-template-columns: minmax(0, 1fr); } }
+  #drop { border: 2px dashed var(--line); border-radius: 12px; padding: 28px 16px; text-align: center; cursor: pointer; transition: border-color .15s, background .15s; }
+  #drop.over { border-color: var(--accent); background: var(--chip); }
+  #drop strong { display: block; font-size: 16px; margin-bottom: 4px; }
+  #drop span { color: var(--muted); }
+  .steps { margin: 12px 0 0; padding-left: 20px; color: var(--muted); }
+  .steps b { color: var(--ink); }
+  .notice { margin-top: 10px; padding: 10px 12px; border-radius: 8px; background: var(--chip); font-size: 14px; }
+  .status { margin-top: 10px; font-size: 14px; min-height: 1.5em; }
+  .status.ok { color: var(--ok); } .status.err { color: var(--err); } .status.warn { color: var(--warn); }
+  button, select, input, textarea { font: inherit; color: inherit; }
+  button { background: var(--chip); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  label.field { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
+  textarea, input[type=text], input[type=number], select { width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+  textarea { resize: vertical; }
+  #abcText { font-family: var(--mono); font-size: 13px; min-height: 260px; white-space: pre; overflow-wrap: normal; overflow-x: auto; }
+  #lyrics { min-height: 220px; }
+  #notation { overflow-x: auto; background: #fff; border-radius: 8px; padding: 8px; }
+  #notation svg { max-width: 100%; }
+  #player { margin-top: 10px; }
+  .sections { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  .sections li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+  .sections .meta { display: flex; gap: 8px; align-items: center; min-width: 0; flex-wrap: wrap; }
+  .sections select { width: auto; padding: 4px 6px; }
+  .sections .bars { color: var(--muted); font-size: 13px; }
+  .sections .lyr { color: var(--muted); font-size: 12px; font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; }
+  .sections .tools { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+  .sections .tools button { padding: 4px 8px; font-size: 13px; }
+  @media (max-width: 640px) {
+    .sections li { grid-template-columns: minmax(0, 1fr); }
+    .sections .tools { justify-content: flex-start; }
+    .sections .lyr { max-width: 100%; }
+  }
+  .issues { margin: 8px 0 0; padding-left: 18px; font-size: 13px; color: var(--warn); }
+  .issues.clean { color: var(--ok); list-style: none; padding-left: 0; }
+  .hidden { display: none !important; }
+  footer { max-width: 1200px; margin: 0 auto; padding: 0 16px 32px; color: var(--muted); font-size: 13px; }
+  a { color: var(--accent); }
+  code { font-family: var(--mono); font-size: .92em; background: var(--chip); padding: 1px 5px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>YuE2 Score Studio</h1>
+  <p>View, play, rearrange and edit the score behind a YuE2 song, then send it back for a re-render.</p>
+</header>
+<main>
+  <section class="panel">
+    <div id="drop" tabindex="0" role="button" aria-label="Load a score PNG">
+      <strong>Drop a score PNG here</strong>
+      <span>…or click to choose. The noise-looking image from <code>music-yue2</code> / <code>cover-yue2</code>. Also accepts <code>.json</code> or <code>.abc</code>.</span>
+      <input id="file" type="file" accept=".png,.json,.abc,.txt,audio/*" multiple hidden>
+    </div>
+    <ol class="steps">
+      <li><b>Load</b> the score PNG a YuE2 job returned. Drop the MP3 too if you want to listen alongside.</li>
+      <li><b>Edit</b>: reorder or duplicate sections, make one instrumental, transpose, change tempo, rewrite lyrics or style.</li>
+      <li><b>Download</b> the new score PNG and send it to <code>/wf /run:score-yue2</code> <b>as a file</b>.</li>
+    </ol>
+    <div class="notice"><b>Send PNGs as files, not photos.</b> Chat apps recompress photos, which destroys the data hidden in the pixels. Download the original from the job page, and attach it as a file or document when sending it back.</div>
+    <div id="status" class="status" role="status"></div>
+  </section>
+
+  <section id="editor" class="hidden" style="display:grid; gap:16px">
+    <div class="panel">
+      <h2>Score</h2>
+      <div id="notation"></div>
+      <div id="player"></div>
+      <audio id="mp3" controls class="hidden" style="width:100%; margin-top:10px"></audio>
+      <p style="color:var(--muted); font-size:13px; margin:8px 0 0">The player is a piano sketch of the score (melody + chords), not YuE2's singing. The re-render performs it with your style.</p>
+    </div>
+
+    <div class="grid2">
+      <div class="panel">
+        <h2>Sections</h2>
+        <ul id="sections" class="sections"></ul>
+        <div class="row" style="margin-top:12px">
+          <span style="color:var(--muted); font-size:13px">Whole song:</span>
+          <button data-transpose="-1">Transpose −1</button>
+          <button data-transpose="1">Transpose +1</button>
+          <label style="display:flex; gap:6px; align-items:center; font-size:13px; color:var(--muted)">Tempo
+            <input id="tempo" type="number" min="30" max="300" style="width:84px"> BPM</label>
+        </div>
+        <label class="field" style="display:flex; gap:8px; align-items:center"><input id="syncLyrics" type="checkbox" checked style="width:auto"> Apply section moves to matching lyric blocks too</label>
+        <ul id="issues" class="issues"></ul>
+      </div>
+
+      <div class="panel">
+        <h2>Style &amp; lyrics</h2>
+        <label class="field" for="style">Style (applies to the whole song)</label>
+        <textarea id="style" rows="3"></textarea>
+        <label class="field" for="lyrics">Lyrics — <code>[Verse]</code>, <code>[Chorus]</code>… in the same order as the score's sections</label>
+        <textarea id="lyrics"></textarea>
+        <div class="grid2" style="gap:8px">
+          <div><label class="field" for="seed">Seed</label><input id="seed" type="number" min="0"></div>
+          <div><label class="field" for="maxdur">Max length (s)</label><input id="maxdur" type="number" min="10" max="360"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Raw score (ABC)</h2>
+      <textarea id="abcText" spellcheck="false"></textarea>
+      <div class="row" style="margin-top:12px">
+        <button id="dlPng" class="primary">Download score PNG</button>
+        <button id="dlAbc">Download .abc</button>
+        <button id="dlJson">Download .json</button>
+        <button id="revert">Revert to loaded</button>
+      </div>
+    </div>
+  </section>
+</main>
+<footer>
+  Part of <a href="https://github.com/UnlimitedEditing/ComfyUI-YuE2Fast">ComfyUI-YuE2Fast</a>. Score PNGs use the M3DS container (byte-compatible with Meshsmuggler). YuE2 weights: CC BY-NC 4.0.
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/pako@1.0.11/dist/pako.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/upng-js@2.1.0/UPNG.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/abcjs@6.4.4/dist/abcjs-basic-min.js"></script>
+<script>
+"use strict";
+// ---------- M3DS container (keep in sync with m3ds.py / Meshsmuggler) ----------
+const MAGIC = "M3DS", HEADER_SIZE = 40, FLAG_GZIP = 1;
+const CRC_TABLE = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(bytes) { let c = 0xFFFFFFFF; for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+const u64 = (dv, o) => Number(dv.getBigUint64(o));
+
+function decodeM3DS(rgb) {
+  if (rgb.length < HEADER_SIZE) throw new Error("Image too small to hold a score.");
+  const dv = new DataView(rgb.buffer, rgb.byteOffset, rgb.byteLength);
+  const magic = String.fromCharCode(...rgb.slice(0, 4));
+  if (magic !== MAGIC) throw new Error("This PNG doesn't contain a score (no M3DS header). If it came through a chat app as a photo, it was recompressed — download the original file.");
+  // >4sBBHHQIIQIH: magic@0 version@4 flags@5 index@6 count@8 blob_total@10 payload_len@18
+  // chunk_crc@22 orig_len@26 orig_crc@34 fname_len@38
+  const flags = dv.getUint8(5), count = dv.getUint16(8), payloadLen = dv.getUint32(18), chunkCrc = dv.getUint32(22);
+  const origLen = u64(dv, 26), origCrc = dv.getUint32(34), fnameLen = dv.getUint16(38);
+  if (count !== 1) throw new Error(`Multi-image score (${count} chunks) isn't supported here.`);
+  const fname = new TextDecoder().decode(rgb.slice(HEADER_SIZE, HEADER_SIZE + fnameLen));
+  const payload = rgb.slice(HEADER_SIZE + fnameLen, HEADER_SIZE + fnameLen + payloadLen);
+  if (payload.length !== payloadLen || crc32(payload) !== chunkCrc) throw new Error("The score PNG's pixels were altered (resized or recompressed). Use the original file.");
+  const data = flags & FLAG_GZIP ? pako.ungzip(payload) : payload;
+  if (data.length !== origLen || crc32(data) !== origCrc) throw new Error("Score data is corrupted.");
+  return { data, fname };
+}
+
+function encodeM3DS(data, fname, minSide = 256) {
+  const blob = pako.gzip(data, { level: 9 });
+  const fb = new TextEncoder().encode(fname);
+  const raw0 = new Uint8Array(HEADER_SIZE + fb.length + blob.length);
+  const dv = new DataView(raw0.buffer);
+  raw0.set([77, 51, 68, 83], 0);                   // "M3DS"
+  dv.setUint8(4, 1); dv.setUint8(5, FLAG_GZIP);     // version, flags
+  dv.setUint16(6, 0); dv.setUint16(8, 1);           // chunk index, count
+  dv.setBigUint64(10, BigInt(blob.length));         // blob total
+  dv.setUint32(18, blob.length); dv.setUint32(22, crc32(blob));
+  dv.setBigUint64(26, BigInt(data.length)); dv.setUint32(34, crc32(data));
+  dv.setUint16(38, fb.length);
+  raw0.set(fb, HEADER_SIZE); raw0.set(blob, HEADER_SIZE + fb.length);
+  const pixels = Math.ceil(raw0.length / 3);
+  const w = Math.max(minSide, Math.ceil(Math.sqrt(pixels))), h = Math.max(minSide, Math.ceil(pixels / w));
+  const rgb = new Uint8Array(w * h * 3); rgb.set(raw0);
+  return writePngRGB(rgb, w, h);
+}
+
+// Minimal truecolor PNG writer (colour type 2, 8-bit, filter 0): no palette/quantisation surprises.
+function writePngRGB(rgb, w, h) {
+  const rowLen = w * 3, filtered = new Uint8Array((rowLen + 1) * h);
+  for (let y = 0; y < h; y++) { filtered[y * (rowLen + 1)] = 0; filtered.set(rgb.subarray(y * rowLen, (y + 1) * rowLen), y * (rowLen + 1) + 1); }
+  const chunk = (type, body) => {
+    const out = new Uint8Array(12 + body.length), dv = new DataView(out.buffer);
+    dv.setUint32(0, body.length); out.set(new TextEncoder().encode(type), 4); out.set(body, 8);
+    dv.setUint32(8 + body.length, crc32(out.subarray(4, 8 + body.length))); return out;
+  };
+  const ihdr = new Uint8Array(13), idv = new DataView(ihdr.buffer);
+  idv.setUint32(0, w); idv.setUint32(4, h); ihdr.set([8, 2, 0, 0, 0], 8);
+  const parts = [new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ihdr), chunk("IDAT", pako.deflate(filtered, { level: 9 })), chunk("IEND", new Uint8Array(0))];
+  return new Blob(parts, { type: "image/png" });
+}
+
+function pngToRgb(buffer) {
+  const img = UPNG.decode(buffer);
+  if (img.depth !== 8) throw new Error(`Unsupported PNG bit depth ${img.depth}.`);
+  const src = new Uint8Array(img.data), n = img.width * img.height;
+  if (img.ctype === 2) return src.subarray(0, n * 3);
+  const rgba = new Uint8Array(UPNG.toRGBA8(img)[0]), rgb = new Uint8Array(n * 3);   // palette / RGBA / grey
+  for (let i = 0; i < n; i++) { rgb[i * 3] = rgba[i * 4]; rgb[i * 3 + 1] = rgba[i * 4 + 1]; rgb[i * 3 + 2] = rgba[i * 4 + 2]; }
+  return rgb;
+}
+
+// ---------- ABC model: header + sections (native YuE2 dialect) ----------
+const SECTION_TYPES = ["intro", "verse", "prechorus", "chorus", "postchorus", "bridge", "interlude", "solo", "breakdown", "outro"];
+function parseAbc(abc) {
+  const lines = abc.replace(/\r/g, "").split("\n");
+  const header = [], sections = [];
+  let i = 0, seenK = false;
+  for (; i < lines.length; i++) {
+    const l = lines[i];
+    if (seenK && (/^%\s*\S/.test(l) || /^V:\s*\S+\s*$/.test(l))) break;
+    header.push(l);
+    if (/^K:/.test(l)) seenK = true;
+  }
+  let cur = null;
+  for (; i < lines.length; i++) {
+    const l = lines[i];
+    const m = /^%\s*(.+?)\s*$/.exec(l);
+    if (m) { cur = { name: m[1].toLowerCase(), lines: [] }; sections.push(cur); continue; }
+    if (!cur) { cur = { name: "section", lines: [] }; sections.push(cur); }
+    if (l.trim() !== "") cur.lines.push(l);
+  }
+  return { header, sections };
+}
+function serializeAbc(model) {
+  const out = [...model.header];
+  for (const s of model.sections) { out.push(`% ${s.name}`); out.push(...s.lines); }
+  return out.join("\n").replace(/\n+$/, "") + "\n";
+}
+function headerField(model, key) { const l = model.header.find(x => x.startsWith(key + ":")); return l ? l.slice(key.length + 1).trim() : null; }
+function setHeaderField(model, key, value) { const i = model.header.findIndex(x => x.startsWith(key + ":")); if (i >= 0) model.header[i] = `${key}:${value}`; }
+
+// Per-voice music lines of a section: [{voice, text}]
+function voiceLines(sec) {
+  const out = []; let voice = null;
+  for (const l of sec.lines) {
+    const v = /^V:\s*(\S+)/.exec(l);
+    if (v) { voice = v[1]; continue; }
+    if (/^[A-Za-z]:/.test(l)) continue;
+    out.push({ voice, text: l });
+  }
+  return out;
+}
+function barCount(text) { let n = 0; for (const bar of text.split("|")) { const t = bar.trim(); if (!t) continue; const z = /^Z(\d*)$/.exec(t); n += z ? (+z[1] || 1) : 1; } return n; }
+function sectionBars(sec) { const v = voiceLines(sec).filter(x => x.voice === "Vocal"); return v.reduce((a, x) => a + barCount(x.text), 0); }
+
+// Duration tokenizer for the native dialect (integer multipliers, ties, chord symbols, inline fields).
+const TOKEN = /"[^"]*"|\[[A-Za-z]:[^\]]*\]|[_^=]*[A-Ga-g][',]*\d*-?|z\d*|Z\d*|\s+|./g;
+function barUnits(meter, unit) {
+  const [mn, md] = (meter || "4/4").split("/").map(Number); const ud = +(unit || "1/8").split("/")[1];
+  return mn / md * ud;
+}
+function tokenDur(tok) { const m = /(\d+)-?$/.exec(tok); return m ? +m[1] : 1; }
+function validate(model) {
+  const issues = [];
+  let meter = headerField(model, "M"), unit = headerField(model, "L");
+  if (!unit) issues.push("Missing L: (unit note length) in header.");
+  if (!headerField(model, "K")) issues.push("Missing K: (key) in header.");
+  model.sections.forEach((sec, si) => {
+    const names = new Set(voiceLines(sec).map(v => v.voice));
+    if (!names.has("Vocal") || !names.has("Ins")) issues.push(`Section ${si + 1} (${sec.name}): needs both a V: Vocal and a V: Ins block.`);
+    for (const l of sec.lines) { const mm = /^M:\s*(\S+)/.exec(l); if (mm) meter = mm[1]; }
+    const want = barUnits(meter, unit);
+    const tally = { Vocal: 0, Ins: 0 };
+    for (const { voice, text } of voiceLines(sec)) {
+      text.split("|").forEach(bar => {
+        const t = bar.trim(); if (!t) return;
+        if (/^Z\d*$/.test(t)) { tally[voice] = (tally[voice] || 0) + (+t.slice(1) || 1); return; }
+        let units = 0;
+        for (const tok of t.match(TOKEN) || []) {
+          if (/^\s+$/.test(tok) || tok.startsWith('"') || tok.startsWith("[")) continue;
+          if (/^[_^=]*[A-Ga-g]/.test(tok) || /^z/.test(tok)) units += tokenDur(tok);
+          else { issues.push(`Section ${si + 1} (${sec.name}), ${voice}: unsupported symbol "${tok}".`); return; }
+        }
+        if (Math.abs(units - want) > 1e-6) issues.push(`Section ${si + 1} (${sec.name}), ${voice}: a bar has ${units} units, expected ${want} (“${t.slice(0, 40)}”).`);
+        tally[voice] = (tally[voice] || 0) + 1;
+      });
+    }
+    if (tally.Vocal !== tally.Ins) issues.push(`Section ${si + 1} (${sec.name}): Vocal has ${tally.Vocal} bars but Ins has ${tally.Ins}.`);
+  });
+  return issues;
+}
+
+// Replace the vocal melody with rests, keeping chord symbols at their onsets.
+function makeInstrumental(sec, meter, unit) {
+  const want = barUnits(meter, unit);
+  let voice = null;
+  sec.lines = sec.lines.map(l => {
+    const v = /^V:\s*(\S+)/.exec(l); if (v) { voice = v[1]; return l; }
+    if (voice !== "Vocal" || /^[A-Za-z]:/.test(l)) return l;
+    return l.split("|").map(bar => {
+      const t = bar.trim(); if (!t || /^Z\d*$/.test(t)) return bar;
+      let pos = 0, last = 0, out = ""; const chords = [];
+      for (const tok of t.match(TOKEN) || []) {
+        if (tok.startsWith('"')) chords.push([pos, tok]);
+        else if (/^[_^=]*[A-Ga-g]/.test(tok) || /^z/.test(tok)) pos += tokenDur(tok);
+      }
+      if (!chords.length) return "Z";
+      for (const [at, sym] of chords) { if (at > last) out += rests(at - last); out += sym; last = at; }
+      out += rests(want - last);
+      return out;
+    }).join("|");
+  });
+}
+const MULTS = [48, 32, 24, 16, 12, 8, 6, 4, 3, 2, 1];
+function rests(n) { let s = ""; for (const m of MULTS) while (n >= m) { s += "z" + (m === 1 ? "" : m); n -= m; } return s; }
+
+// ---------- Lyrics blocks ----------
+function parseLyrics(text) {
+  const blocks = []; let cur = null;
+  for (const l of (text || "").replace(/\r/g, "").split("\n")) {
+    const m = /^\s*\[([^\]]+)\]\s*(.*)$/.exec(l);
+    if (m) { cur = { tag: m[1], lines: m[2] ? [m[2]] : [] }; blocks.push(cur); continue; }
+    if (!cur) { if (!l.trim()) continue; cur = { tag: null, lines: [] }; blocks.push(cur); }
+    cur.lines.push(l);
+  }
+  blocks.forEach(b => { while (b.lines.length && !b.lines[b.lines.length - 1].trim()) b.lines.pop(); });
+  return blocks;
+}
+function serializeLyrics(blocks) { return blocks.map(b => (b.tag ? `[${b.tag}]\n` : "") + b.lines.join("\n")).join("\n\n"); }
+const norm = s => (s || "").toLowerCase().replace(/[^a-z]/g, "").replace(/\d+$/, "").replace("pre", "pre");
+// Match score section k to a lyric block: same type, same occurrence index.
+function lyricIndexFor(model, blocks, k) {
+  const type = norm(model.sections[k].name); let occ = 0;
+  for (let i = 0; i < k; i++) if (norm(model.sections[i].name) === type) occ++;
+  let seen = 0;
+  for (let j = 0; j < blocks.length; j++) if (norm(blocks[j].tag).startsWith(type) || type.startsWith(norm(blocks[j].tag) || "~")) { if (seen === occ) return j; seen++; }
+  return -1;
+}
+
+// ---------- App ----------
+const $ = id => document.getElementById(id);
+let pkg = null, loadedPkg = null, model = null, visual = null, synthControl = null, renderTimer = null;
+
+function setStatus(msg, kind = "") { const el = $("status"); el.textContent = msg; el.className = "status " + kind; }
+
+function loadPackage(p, source) {
+  if (!p || !(p.abc || "").trim()) throw new Error("No score found in " + source + ".");
+  pkg = JSON.parse(JSON.stringify(p)); loadedPkg = JSON.parse(JSON.stringify(p));
+  $("style").value = pkg.style || ""; $("lyrics").value = pkg.lyrics || "";
+  $("seed").value = pkg.seed ?? 0; $("maxdur").value = pkg.max_duration ?? 240;
+  $("abcText").value = pkg.abc;
+  $("editor").classList.remove("hidden");
+  fromText();
+  const secs = pkg.audio_seconds ? ` · ${Math.round(pkg.audio_seconds)} s song` : "";
+  setStatus(`Loaded ${source}${secs}. ${model.sections.length} sections.`, "ok");
+}
+
+async function handleFiles(files) {
+  for (const f of files) {
+    try {
+      if (f.type.startsWith("audio/") || /\.(mp3|flac|wav|ogg|m4a)$/i.test(f.name)) {
+        const a = $("mp3"); a.src = URL.createObjectURL(f); a.classList.remove("hidden"); continue;
+      }
+      const buf = await f.arrayBuffer();
+      if (/\.png$/i.test(f.name) || f.type === "image/png") {
+        const { data, fname } = decodeM3DS(pngToRgb(buf));
+        const p = JSON.parse(new TextDecoder().decode(data));
+        if (p.format !== "yue2-score") throw new Error(`${fname} isn't a YuE2 score package.`);
+        loadPackage(p, f.name);
+      } else if (/\.json$/i.test(f.name)) {
+        loadPackage(JSON.parse(new TextDecoder().decode(buf)), f.name);
+      } else {
+        loadPackage({ format: "yue2-score", version: 1, abc: new TextDecoder().decode(buf), style: "", lyrics: "", seed: 0 }, f.name);
+      }
+    } catch (e) { setStatus(e.message, "err"); console.error(e); }
+  }
+}
+
+function fromText() { model = parseAbc($("abcText").value); refresh(false); }
+function toText() { $("abcText").value = serializeAbc(model); refresh(true); }
+
+function refresh(fromModel) {
+  const abc = $("abcText").value;
+  pkg.abc = abc;
+  $("tempo").value = (/=(\d+)/.exec(headerField(model, "Q") || "") || [])[1] || "";
+  renderSections();
+  const issues = validate(model);
+  const ul = $("issues"); ul.innerHTML = "";
+  ul.className = "issues" + (issues.length ? "" : " clean");
+  (issues.length ? issues.slice(0, 12) : ["Score checks passed (bar lengths, voice pairing)."]).forEach(t => { const li = document.createElement("li"); li.textContent = t; ul.appendChild(li); });
+  if (issues.length > 12) { const li = document.createElement("li"); li.textContent = `…and ${issues.length - 12} more.`; ul.appendChild(li); }
+  clearTimeout(renderTimer); renderTimer = setTimeout(renderNotation, fromModel ? 0 : 400);
+}
+
+function renderNotation() {
+  try {
+    visual = ABCJS.renderAbc("notation", pkg.abc, { responsive: "resize", add_classes: true, paddingtop: 8, paddingbottom: 8 })[0];
+    if (ABCJS.synth.supportsAudio()) {
+      if (!synthControl) { synthControl = new ABCJS.synth.SynthController(); synthControl.load("#player", null, { displayPlay: true, displayProgress: true, displayRestart: true }); }
+      synthControl.setTune(visual, false, { chordsOff: false }).catch(e => console.warn("synth", e));
+    } else $("player").textContent = "Audio playback isn't supported in this browser.";
+  } catch (e) { console.error(e); }
+}
+
+function renderSections() {
+  const ul = $("sections"); ul.innerHTML = "";
+  const blocks = parseLyrics($("lyrics").value);
+  model.sections.forEach((sec, k) => {
+    const li = document.createElement("li");
+    const meta = document.createElement("div"); meta.className = "meta";
+    const sel = document.createElement("select"); sel.setAttribute("aria-label", "Section type");
+    const opts = SECTION_TYPES.includes(sec.name) ? SECTION_TYPES : [sec.name, ...SECTION_TYPES];
+    opts.forEach(t => { const o = document.createElement("option"); o.value = o.textContent = t; if (t === sec.name) o.selected = true; sel.appendChild(o); });
+    sel.onchange = () => { renameSection(k, sel.value); };
+    const bars = document.createElement("span"); bars.className = "bars"; bars.textContent = `${sectionBars(sec)} bars`;
+    const lj = lyricIndexFor(model, blocks, k);
+    const lyr = document.createElement("span"); lyr.className = "lyr";
+    lyr.textContent = lj >= 0 ? (blocks[lj].lines.find(x => x.trim()) || "(no words)") : "(instrumental / no matching lyrics)";
+    meta.append(sel, bars, lyr);
+    const tools = document.createElement("div"); tools.className = "tools";
+    const btn = (label, title, fn, disabled) => { const b = document.createElement("button"); b.textContent = label; b.title = title; b.setAttribute("aria-label", title); b.disabled = !!disabled; b.onclick = fn; tools.appendChild(b); };
+    btn("↑", "Move up", () => moveSection(k, -1), k === 0);
+    btn("↓", "Move down", () => moveSection(k, 1), k === model.sections.length - 1);
+    btn("Dup", "Duplicate section", () => dupSection(k));
+    btn("Instr", "Make instrumental (vocal rests, chords kept)", () => instrSection(k));
+    btn("✕", "Delete section", () => delSection(k), model.sections.length < 2);
+    li.append(meta, tools); ul.appendChild(li);
+  });
+}
+
+function withLyrics(fn) {
+  if (!$("syncLyrics").checked) return fn(null);
+  const blocks = parseLyrics($("lyrics").value);
+  const changed = fn(blocks);
+  if (changed) { $("lyrics").value = serializeLyrics(blocks); pkg.lyrics = $("lyrics").value; }
+}
+function moveSection(k, d) {
+  withLyrics(blocks => {
+    let a = -1, b = -1;
+    if (blocks) { a = lyricIndexFor(model, blocks, k); b = lyricIndexFor(model, blocks, k + d); }
+    [model.sections[k], model.sections[k + d]] = [model.sections[k + d], model.sections[k]];
+    if (blocks && a >= 0 && b >= 0) { [blocks[a], blocks[b]] = [blocks[b], blocks[a]]; return true; }
+    return false;
+  });
+  toText();
+}
+function dupSection(k) {
+  withLyrics(blocks => {
+    const j = blocks ? lyricIndexFor(model, blocks, k) : -1;
+    model.sections.splice(k + 1, 0, JSON.parse(JSON.stringify(model.sections[k])));
+    if (j >= 0) { blocks.splice(j + 1, 0, JSON.parse(JSON.stringify(blocks[j]))); return true; }
+    return false;
+  });
+  toText();
+}
+function delSection(k) {
+  withLyrics(blocks => {
+    const j = blocks ? lyricIndexFor(model, blocks, k) : -1;
+    model.sections.splice(k, 1);
+    if (j >= 0) { blocks.splice(j, 1); return true; }
+    return false;
+  });
+  toText();
+}
+function instrSection(k) {
+  withLyrics(blocks => {
+    const j = blocks ? lyricIndexFor(model, blocks, k) : -1;
+    let meter = headerField(model, "M");
+    for (let i = 0; i <= k; i++) for (const l of model.sections[i].lines) { const mm = /^M:\s*(\S+)/.exec(l); if (mm) meter = mm[1]; }
+    makeInstrumental(model.sections[k], meter, headerField(model, "L"));
+    if (model.sections[k].name !== "solo" && model.sections[k].name !== "interlude") model.sections[k].name = "interlude";
+    if (j >= 0) { blocks.splice(j, 1); return true; }
+    return false;
+  });
+  toText();
+}
+function renameSection(k, name) {
+  withLyrics(blocks => {
+    const j = blocks ? lyricIndexFor(model, blocks, k) : -1;
+    model.sections[k].name = name;
+    if (j >= 0) { blocks[j].tag = name.charAt(0).toUpperCase() + name.slice(1); return true; }
+    return false;
+  });
+  toText();
+}
+
+// ---------- Transposition for the native dialect (abcjs 6.4.4's strTranspose is a no-op here) ----------
+const LETTERS = "CDEFGAB", NATURAL = [0, 2, 4, 5, 7, 9, 11];
+const MAJOR_KEYS = ["C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
+const MINOR_KEYS = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "G#", "A", "Bb", "B"];
+const SHARP_ORDER = "FCGDAEB", FLAT_ORDER = "BEADGCF";
+const FIFTHS = { C: 0, G: 1, D: 2, A: 3, E: 4, B: 5, "F#": 6, "C#": 7, F: -1, Bb: -2, Eb: -3, Ab: -4, Db: -5, Gb: -6, Cb: -7 };
+function parseKey(k) {
+  const m = /^\s*([A-G][#b]?)\s*(m(?:in(?:or)?)?|maj(?:or)?)?/i.exec(k || "C");
+  const tonic = m ? m[1][0].toUpperCase() + (m[1][1] || "") : "C", minor = !!(m && m[2] && /^m(in)?/i.test(m[2]) && !/^maj/i.test(m[2]));
+  return { tonic, minor };
+}
+function pitchClass(name) { return (NATURAL[LETTERS.indexOf(name[0])] + (name[1] === "#" ? 1 : name[1] === "b" ? -1 : 0) + 12) % 12; }
+function keySignature(key) {   // letter -> alteration
+  let relMajor = key.tonic;
+  if (key.minor) {   // spell from the tonic (Eb minor -> Gb, not F#) so the signature matches the key's letters
+    const li = (LETTERS.indexOf(key.tonic[0]) + 2) % 7, alt = (((pitchClass(key.tonic) + 3) % 12 - NATURAL[li]) % 12 + 18) % 12 - 6;
+    relMajor = LETTERS[li] + (alt === 1 ? "#" : alt === -1 ? "b" : "");
+  }
+  const f = FIFTHS[relMajor] ?? 0, sig = {};
+  for (let i = 0; i < Math.abs(f); i++) sig[(f > 0 ? SHARP_ORDER : FLAT_ORDER)[i]] = f > 0 ? 1 : -1;
+  return sig;
+}
+function transposeKey(key, steps) {
+  const pc = (pitchClass(key.tonic) + steps + 120) % 12;
+  return { tonic: (key.minor ? MINOR_KEYS : MAJOR_KEYS)[pc], minor: key.minor };
+}
+const keyText = k => k.tonic + (k.minor ? "m" : "");
+const ACC = { "^^": 2, "^": 1, "=": 0, "_": -1, "__": -2 }, ACC_TEXT = { 2: "^^", 1: "^", 0: "=", "-1": "_", "-2": "__" };
+function transposeAbc(abc, steps) {
+  const model0 = parseAbc(abc);
+  let oldKey = parseKey(headerField(model0, "K")), newKey = transposeKey(oldKey, steps);
+  const letterShift = () => (LETTERS.indexOf(newKey.tonic[0]) - LETTERS.indexOf(oldKey.tonic[0]) + 7) % 7;
+  let shift = letterShift();
+  const noteRe = /^([_^=]*)([A-Ga-g])([',]*)(\d*)(-?)$/;
+  const chordRe = /^"([A-G])([#b]?)([^"/]*)(?:\/([A-G])([#b]?))?"$/;
+  const moveName = (letter, acc) => {    // returns [letter, accText] for a chord root/bass
+    const li = LETTERS.indexOf(letter), nli = (li + shift) % 7;
+    const target = (NATURAL[li] + (acc === "#" ? 1 : acc === "b" ? -1 : 0) + steps + 120) % 12;
+    let alt = ((target - NATURAL[nli]) % 12 + 18) % 12 - 6;
+    return LETTERS[nli] + (alt === 1 ? "#" : alt === -1 ? "b" : alt === 2 ? "##" : alt === -2 ? "bb" : "");
+  };
+  const transposeLine = line => {
+    let oldSig = keySignature(oldKey), newSig = keySignature(newKey), oldBar = {}, newBar = {};
+    return (line.match(TOKEN) || []).map(tok => {
+      if (tok === "|") { oldBar = {}; newBar = {}; return tok; }
+      const kf = /^\[K:([^\]]*)\]$/.exec(tok);
+      if (kf) { oldKey = parseKey(kf[1]); newKey = transposeKey(oldKey, steps); shift = letterShift(); oldSig = keySignature(oldKey); newSig = keySignature(newKey); oldBar = {}; newBar = {}; return `[K:${keyText(newKey)}]`; }
+      const c = chordRe.exec(tok);
+      if (c) return `"${moveName(c[1], c[2])}${c[3]}${c[4] ? "/" + moveName(c[4], c[5]) : ""}"`;
+      const n = noteRe.exec(tok);
+      if (!n) return tok;
+      const [, accTxt, letterRaw, marks, dur, tie] = n;
+      const L = letterRaw.toUpperCase(), li = LETTERS.indexOf(L);
+      let octave = (letterRaw === L ? 4 : 5) + (marks.split("'").length - 1) - (marks.split(",").length - 1);
+      if (accTxt) oldBar[L] = ACC[accTxt];
+      const alter = L in oldBar ? oldBar[L] : (oldSig[L] || 0);
+      const midi = octave * 12 + NATURAL[li] + alter + steps;
+      let nli = li + shift, nOct = octave; if (nli > 6) { nli -= 7; nOct += 1; }
+      const NL = LETTERS[nli];
+      let need = midi - (nOct * 12 + NATURAL[nli]);
+      if (need > 2) { need -= 12; nOct += 1; } else if (need < -2) { need += 12; nOct -= 1; }
+      const active = NL in newBar ? newBar[NL] : (newSig[NL] || 0);
+      let outAcc = "";
+      if (need !== active) { outAcc = ACC_TEXT[need] ?? ""; newBar[NL] = need; }
+      const letterOut = nOct >= 5 ? NL.toLowerCase() : NL;
+      const marksOut = nOct >= 5 ? "'".repeat(nOct - 5) : ",".repeat(4 - nOct);
+      return outAcc + letterOut + marksOut + dur + tie;
+    }).join("");
+  };
+  const out = [];
+  let inBody = false;
+  for (const line of abc.replace(/\r/g, "").split("\n")) {
+    const k = /^K:\s*(.*)$/.exec(line);
+    if (k) { oldKey = parseKey(k[1]); newKey = transposeKey(oldKey, steps); shift = letterShift(); out.push(`K:${keyText(newKey)}`); inBody = true; continue; }
+    if (!inBody || /^[A-Za-z]:/.test(line) || /^%/.test(line) || !line.trim()) { out.push(line); continue; }
+    out.push(transposeLine(line));
+  }
+  return out.join("\n");
+}
+
+function transpose(steps) {
+  try {
+    $("abcText").value = transposeAbc($("abcText").value, steps); fromText();
+    setStatus(`Transposed ${steps > 0 ? "+" : ""}${steps} semitone → key ${headerField(model, "K")}.`, "ok");
+  } catch (e) { setStatus("Transpose failed: " + e.message, "err"); console.error(e); }
+}
+
+function currentPackage() {
+  return { ...pkg, abc: $("abcText").value, style: $("style").value, lyrics: $("lyrics").value,
+           seed: Math.max(0, parseInt($("seed").value || "0", 10)), max_duration: Math.min(360, Math.max(10, parseInt($("maxdur").value || "240", 10))),
+           edited_with: "yue2-score-studio" };
+}
+function download(blob, name) { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); }
+
+// ---------- Wire up ----------
+const drop = $("drop");
+drop.onclick = () => $("file").click();
+drop.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("file").click(); } };
+$("file").onchange = e => handleFiles(e.target.files);
+["dragenter", "dragover"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", e => handleFiles(e.dataTransfer.files));
+document.addEventListener("dragover", e => e.preventDefault());
+document.addEventListener("drop", e => { if (!drop.contains(e.target)) { e.preventDefault(); handleFiles(e.dataTransfer.files); } });
+
+$("abcText").addEventListener("input", fromText);
+$("lyrics").addEventListener("input", () => { pkg.lyrics = $("lyrics").value; renderSections(); });
+$("style").addEventListener("input", () => { pkg.style = $("style").value; });
+document.querySelectorAll("[data-transpose]").forEach(b => b.onclick = () => transpose(+b.dataset.transpose));
+$("tempo").addEventListener("change", () => {
+  const bpm = parseInt($("tempo").value, 10); if (!(bpm >= 30 && bpm <= 300)) return;
+  const q = headerField(model, "Q") || "1/4=120"; setHeaderField(model, "Q", q.replace(/=\d+/, "=" + bpm)); toText();
+});
+$("dlPng").onclick = () => {
+  const issues = validate(model);
+  if (issues.length && !confirm(`The score has ${issues.length} issue(s) YuE2 may reject or misread:\n\n${issues.slice(0, 5).join("\n")}\n\nDownload anyway?`)) return;
+  const bytes = new TextEncoder().encode(JSON.stringify(currentPackage(), null, 1));
+  download(encodeM3DS(bytes, "song.yue2.json"), "yue2-score-edited.png");
+  setStatus("Downloaded. Send it to /wf /run:score-yue2 as a file (not a photo).", "ok");
+};
+$("dlAbc").onclick = () => download(new Blob([$("abcText").value], { type: "text/plain" }), "yue2-score.abc");
+$("dlJson").onclick = () => download(new Blob([JSON.stringify(currentPackage(), null, 1)], { type: "application/json" }), "song.yue2.json");
+$("revert").onclick = () => { if (loadedPkg) loadPackage(loadedPkg, "the loaded file"); };
+
+window.YuE2Studio = { loadPackage, decodeM3DS, encodeM3DS, pngToRgb, parseAbc, serializeAbc, validate, handleFiles };
+</script>
+</body>
+</html>

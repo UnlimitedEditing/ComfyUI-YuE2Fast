@@ -6,8 +6,21 @@ inference runtime in-process:
 - **YuE2 Fast Song** (`YuE2FastSong`) — style + lyrics (+ optional supplied score) → 48 kHz stereo `AUDIO`.
 - **YuE2 Fast Load Source Audio** (`YuE2FastLoadAudio`) — URL / Telegram attachment reference / `input/` file → `AUDIO`.
 - **YuE2 Fast Transcribe** (`YuE2FastTranscribe`) — `AUDIO` → YuE2 ABC score via
-  [SheetSage2](https://huggingface.co/m-a-p/SheetSage2). Feed it to YuE2 Fast Song's `abc` input with
-  `planning=melody` for a zero-shot cover (the official cover recipe).
+  [SheetSage2](https://huggingface.co/m-a-p/SheetSage2). Feed it to YuE2 Fast Song's `abc` input for a
+  zero-shot cover (the official cover recipe).
+- **YuE2 Fast Save / Load Score PNG** (`YuE2FastScorePack`, `YuE2FastScoreUnpack`) — a render's score,
+  style, lyrics and seed (`song.yue2.json`) in a lossless M3DS PNG, and back.
+
+When a score is supplied, YuE2 Fast Song picks the planning mode from it: chord symbols → `full`,
+melody-only → `melody`.
+
+## Score Studio
+
+[`docs/index.html`](docs/index.html) is a static page (serve it with GitHub Pages: *Settings → Pages →
+Deploy from branch → main, /docs*). Drop a score PNG to see the notation, hear a piano sketch, reorder /
+duplicate / delete sections (lyric blocks follow), make a section instrumental, transpose, change tempo,
+and edit style, lyrics or the raw ABC with a bar-length check. It exports a new score PNG to re-render.
+Score PNGs must travel as **files** — chat apps recompress photos, and the CRC check will reject them.
 
 ## Why
 
