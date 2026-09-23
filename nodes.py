@@ -102,6 +102,11 @@ class YuE2FastSong:
 
     def generate(self, style, lyrics, planning, seed, max_abc_tokens, max_duration, acoustic_steps,
                  temperature=1.0, top_p=0.95, top_k=100, repetition_penalty=1.2, guidance=0.0, backend="torch"):
+        # Log what the host actually passed in (Graydient field mappings are otherwise invisible).
+        logging.info("YuE2Fast inputs: %s", json.dumps({
+            "planning": planning, "seed": seed, "max_abc_tokens": max_abc_tokens, "max_duration": max_duration,
+            "acoustic_steps": acoustic_steps, "guidance": guidance, "backend": backend,
+            "style": style[:200], "lyrics_chars": len(lyrics), "lyrics_head": lyrics[:120]}))
         pipe = _pipeline(backend)
         pipe.generation_config = dataclasses.replace(pipe.generation_config, ode_steps=int(acoustic_steps))
         semantic_max = int(max_duration) * 25
