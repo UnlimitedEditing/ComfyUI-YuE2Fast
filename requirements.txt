@@ -1,1 +1,8 @@
 tiktoken
+# YuE2 Fast Transcribe (SheetSage2) only:
+mir_eval
+pretty_midi
+mido
+# SheetSage2 needs transformers 4.x (BartDecoder API changed in 5.x); 4.57.6 is also yue2_infer's pin.
+# transformers==4.57.6
+# huggingface-hub==0.36.2

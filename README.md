@@ -1,8 +1,13 @@
 # ComfyUI-YuE2Fast
 
-One ComfyUI node — **YuE2 Fast Song** (`YuE2FastSong`) — that runs the official
-[YuE2](https://github.com/multimodal-art-projection/YuE) inference runtime in-process:
-style + lyrics → 48 kHz stereo `AUDIO`.
+ComfyUI nodes that run the official [YuE2](https://github.com/multimodal-art-projection/YuE)
+inference runtime in-process:
+
+- **YuE2 Fast Song** (`YuE2FastSong`) — style + lyrics (+ optional supplied score) → 48 kHz stereo `AUDIO`.
+- **YuE2 Fast Load Source Audio** (`YuE2FastLoadAudio`) — URL / Telegram attachment reference / `input/` file → `AUDIO`.
+- **YuE2 Fast Transcribe** (`YuE2FastTranscribe`) — `AUDIO` → YuE2 ABC score via
+  [SheetSage2](https://huggingface.co/m-a-p/SheetSage2). Feed it to YuE2 Fast Song's `abc` input with
+  `planning=melody` for a zero-shot cover (the official cover recipe).
 
 ## Why
 
@@ -23,9 +28,19 @@ exact `torch==2.10.0` pin would replace the host's PyTorch.
   (also checks sibling `yue2/` folders of other model roots), downloading only missing files
   from pinned Hugging Face revisions otherwise.
 
+## Covers
+
+`Load Source Audio → Transcribe (melody_only) → Song (abc, planning=melody) → save`. SheetSage2 is
+imported as a regular package from its snapshot (`models/yue2/SheetSage2`, with its encoder in
+`models/yue2/MERT-v2-FullSong`) rather than via `trust_remote_code`, because transformers' remote-code
+copier misses one of its nested modules. Transcription pads 2 s of silence (so a note cut off at the
+clip end still lands on the beat grid) and falls back to a full (with-chords) score if a melody-only
+score can't be built.
+
 ## Requirements
 
-`tiktoken`, plus what ComfyUI already ships (`torch`, `transformers`, `safetensors`,
+`tiktoken`; for transcription also `mir_eval`, `pretty_midi`, `mido` and **transformers 4.x**
+(SheetSage2 breaks on 5.x; `transformers==4.57.6` + `huggingface-hub==0.36.2` is tested). Otherwise what ComfyUI already ships (`torch`, `transformers`, `safetensors`,
 `numpy`, `huggingface_hub`). NVIDIA GPU with BF16. ~11 GB VRAM for typical songs.
 
 ## Licenses

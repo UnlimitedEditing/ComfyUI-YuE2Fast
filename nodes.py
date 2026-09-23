@@ -98,19 +98,25 @@ class YuE2FastSong:
             "repetition_penalty": ("FLOAT", {"default": 1.2, "min": 0.1, "max": 3.0, "step": 0.01}),
             "guidance": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 20.0, "step": 0.01, "tooltip": "0 = model default (1.0, or 1.01 for planning=off). Values != 1 run two branches (slower)."}),
             "backend": (["torch", "torch-eager"], {"default": "torch", "tooltip": "torch = CUDA graphs (fast). torch-eager = fallback."}),
+            # Optional so workflows saved before this input existed still validate.
+            "abc": ("STRING", {"forceInput": True, "tooltip": "Supplied score (e.g. from YuE2 Fast Transcribe). Skips score planning; use planning=melody for covers."}),
         }}
 
     def generate(self, style, lyrics, planning, seed, max_abc_tokens, max_duration, acoustic_steps,
-                 temperature=1.0, top_p=0.95, top_k=100, repetition_penalty=1.2, guidance=0.0, backend="torch"):
+                 temperature=1.0, top_p=0.95, top_k=100, repetition_penalty=1.2, guidance=0.0, backend="torch", abc=None):
+        abc = (abc or "").strip() or None
+        if abc is not None and planning == "off":
+            planning = "melody"  # a supplied score needs a planning mode that reads it
         # Log what the host actually passed in (Graydient field mappings are otherwise invisible).
         logging.info("YuE2Fast inputs: %s", json.dumps({
             "planning": planning, "seed": seed, "max_abc_tokens": max_abc_tokens, "max_duration": max_duration,
             "acoustic_steps": acoustic_steps, "guidance": guidance, "backend": backend,
-            "style": style[:200], "lyrics_chars": len(lyrics), "lyrics_head": lyrics[:120]}))
+            "style": style[:200], "lyrics_chars": len(lyrics), "lyrics_head": lyrics[:120],
+            "abc_chars": len(abc or "")}))
         pipe = _pipeline(backend)
         pipe.generation_config = dataclasses.replace(pipe.generation_config, ode_steps=int(acoustic_steps))
         semantic_max = int(max_duration) * 25
-        kwargs = dict(style=style, lyrics=lyrics, cot=planning, seed=int(seed),
+        kwargs = dict(style=style, lyrics=lyrics, cot=planning, seed=int(seed), abc=abc,
                       cfg_scale=None if guidance == 0 else float(guidance),
                       abc_sampling={"max_tokens": int(max_abc_tokens), "min_tokens": min(32, int(max_abc_tokens))},
                       semantic_sampling={"max_tokens": semantic_max, "min_tokens": min(200, semantic_max),
