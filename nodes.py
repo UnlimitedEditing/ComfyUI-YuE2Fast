@@ -7,6 +7,7 @@ wrappers decode eagerly (~26 tok/s measured on Graydient 4090s).
 import dataclasses
 import json
 import logging
+import re
 import time
 from pathlib import Path
 
@@ -77,8 +78,8 @@ def _pipeline(backend):
 class YuE2FastSong:
     CATEGORY = "audio/YuE2Fast"
     FUNCTION = "generate"
-    RETURN_TYPES = ("AUDIO", "STRING")
-    RETURN_NAMES = ("audio", "score_abc")
+    RETURN_TYPES = ("AUDIO", "STRING", "STRING")
+    RETURN_NAMES = ("audio", "score_abc", "score_package")
     DESCRIPTION = "Style + lyrics -> 48 kHz stereo song using the official YuE2 runtime (CUDA-graph decoding)."
 
     @classmethod
@@ -105,8 +106,10 @@ class YuE2FastSong:
     def generate(self, style, lyrics, planning, seed, max_abc_tokens, max_duration, acoustic_steps,
                  temperature=1.0, top_p=0.95, top_k=100, repetition_penalty=1.2, guidance=0.0, backend="torch", abc=None):
         abc = (abc or "").strip() or None
-        if abc is not None and planning == "off":
-            planning = "melody"  # a supplied score needs a planning mode that reads it
+        if abc is not None:
+            # A supplied score decides the mode: chord symbols -> full, melody-only -> melody
+            # (matches the official cover recipe and SheetSage2's with-chords fallback).
+            planning = "full" if re.search(r'"[^"]+"', abc.split("K:", 1)[-1]) else "melody"
         # Log what the host actually passed in (Graydient field mappings are otherwise invisible).
         logging.info("YuE2Fast inputs: %s", json.dumps({
             "planning": planning, "seed": seed, "max_abc_tokens": max_abc_tokens, "max_duration": max_duration,
@@ -139,7 +142,11 @@ class YuE2FastSong:
                        truncated=song.truncated, load=timing["load"])
         logging.info("YuE2Fast timing: %s", json.dumps(summary, default=str))
         waveform = torch.from_numpy(song.audio).T.unsqueeze(0).float().contiguous()
-        return ({"waveform": waveform, "sample_rate": song.sample_rate}, song.abc or "")
+        from .score import package
+        score_package = package(abc=song.abc or "", style=style, lyrics=lyrics, seed=int(seed), planning=planning,
+                                max_duration=int(max_duration), acoustic_steps=int(acoustic_steps),
+                                audio_seconds=round(summary["audio_seconds"], 2), truncated=song.truncated)
+        return ({"waveform": waveform, "sample_rate": song.sample_rate}, song.abc or "", score_package)
 
 
 NODE_CLASS_MAPPINGS = {"YuE2FastSong": YuE2FastSong}
