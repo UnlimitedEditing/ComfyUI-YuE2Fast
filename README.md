@@ -8,6 +8,8 @@ inference runtime in-process:
 - **YuE2 Fast Transcribe** (`YuE2FastTranscribe`) — `AUDIO` → YuE2 ABC score via
   [SheetSage2](https://huggingface.co/m-a-p/SheetSage2). Feed it to YuE2 Fast Song's `abc` input for a
   zero-shot cover (the official cover recipe).
+- **YuE2 Fast Source** (`YuE2FastSource`) — one entry point: a score PNG → re-render that score; else source
+  audio → cover (SheetSage2); else nothing → YuE2 composes from style + lyrics. Feeds YuE2 Fast Song.
 - **YuE2 Fast Save / Load Score PNG** (`YuE2FastScorePack`, `YuE2FastScoreUnpack`) — a render's score,
   style, lyrics and seed (`song.yue2.json`) in a lossless M3DS PNG, and back.
 
@@ -53,7 +55,8 @@ score can't be built.
 ## Requirements
 
 `tiktoken`; for transcription also `mir_eval`, `pretty_midi`, `mido` and **transformers 4.x**
-(SheetSage2 breaks on 5.x; `transformers==4.57.6` + `huggingface-hub==0.36.2` is tested). Otherwise what ComfyUI already ships (`torch`, `transformers`, `safetensors`,
+(`transformers==4.57.6` + `huggingface-hub==0.36.2` is tested). On 5.x SheetSage2 fails to build, and even
+with its API shimmed it loads identical weights but decodes no beats, so the node refuses to run on 5.x. Otherwise what ComfyUI already ships (`torch`, `transformers`, `safetensors`,
 `numpy`, `huggingface_hub`). NVIDIA GPU with BF16. ~11 GB VRAM for typical songs.
 
 ## Licenses

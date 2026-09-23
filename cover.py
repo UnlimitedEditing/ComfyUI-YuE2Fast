@@ -110,12 +110,21 @@ class YuE2FastLoadAudio:
         }}
 
     def load(self, audio_url, audio_url_alt, audio_filename, max_seconds):
-        for value, label in ((audio_url, "audio_url"), (audio_url_alt, "audio_url_alt"), (audio_filename, "audio_filename")):
-            if (value or "").strip():
-                waveform = _decode(_resolve(value, label), max_seconds)
-                logging.info("YuE2Fast: loaded source audio via %s: %.1fs", label, waveform.shape[-1] / SHEETSAGE_RATE)
-                return ({"waveform": waveform, "sample_rate": SHEETSAGE_RATE},)
-        raise ValueError("No source audio: audio_url, audio_url_alt and audio_filename are all empty")
+        audio = load_source_audio({"audio_url": audio_url, "audio_url_alt": audio_url_alt,
+                                   "audio_filename": audio_filename}, max_seconds)
+        if audio is None:
+            raise ValueError("No source audio: audio_url, audio_url_alt and audio_filename are all empty")
+        return (audio,)
+
+
+def load_source_audio(values, max_seconds):
+    """First non-empty of {label: url/reference/filename} -> ComfyUI AUDIO at 24 kHz mono, or None."""
+    for label, value in values.items():
+        if (value or "").strip():
+            waveform = _decode(_resolve(value, label), max_seconds)
+            logging.info("YuE2Fast: loaded source audio via %s: %.1fs", label, waveform.shape[-1] / SHEETSAGE_RATE)
+            return {"waveform": waveform, "sample_rate": SHEETSAGE_RATE}
+    return None
 
 
 # --- Transcription ---
@@ -134,7 +143,18 @@ def _staged(name, repo, revision, files):
     return target
 
 
+def _require_transformers_4():
+    """SheetSage2 needs transformers 4.x. On 5.x it fails to build (BartDecoder API), and even with
+    the API shimmed it loads identical weights but decodes no beats -- a silent bad transcription.
+    Verified 2026-09-23: correct on 4.57.6, wrong on 5.9. Fail loudly instead."""
+    import transformers
+    if int(transformers.__version__.split(".")[0]) >= 5:
+        raise RuntimeError(f"YuE2 Fast Transcribe needs transformers 4.x (tested 4.57.6); found {transformers.__version__}. "
+                           "Pin transformers==4.57.6 and huggingface-hub==0.36.2 in the workflow's pip requirements.")
+
+
 def _load_sheetsage():
+    _require_transformers_4()
     ss_dir = _staged("SheetSage2", *SHEETSAGE, SHEETSAGE_FILES)
     mert_dir = _staged("MERT-v2-FullSong", *MERT, MERT_FILES)
     # Import the snapshot as a regular package instead of via trust_remote_code: transformers'
@@ -181,35 +201,39 @@ class YuE2FastTranscribe:
         }}
 
     def transcribe(self, audio, melody_only):
-        mm.unload_all_models()
-        mm.soft_empty_cache()
-        start = time.perf_counter()
-        model = _load_sheetsage().to(mm.get_torch_device())
-        loaded = time.perf_counter()
-        waveform = audio["waveform"][0].float().cpu()  # [channels, samples]; SheetSage2 downmixes/resamples
-        rate = int(audio["sample_rate"])
-        # Trailing silence lets a note cut off by the clip end resolve on the beat grid; melody-only
-        # ABC otherwise fails with "cannot be represented on the decoded subbeat grid".
-        waveform = torch.nn.functional.pad(waveform, (0, 2 * rate))
+        return (transcribe_audio(audio, melody_only),)
+
+
+def transcribe_audio(audio, melody_only=True):
+    mm.unload_all_models()
+    mm.soft_empty_cache()
+    start = time.perf_counter()
+    model = _load_sheetsage().to(mm.get_torch_device())
+    loaded = time.perf_counter()
+    waveform = audio["waveform"][0].float().cpu()  # [channels, samples]; SheetSage2 downmixes/resamples
+    rate = int(audio["sample_rate"])
+    # Trailing silence lets a note cut off by the clip end resolve on the beat grid; melody-only
+    # ABC otherwise fails with "cannot be represented on the decoded subbeat grid".
+    waveform = torch.nn.functional.pad(waveform, (0, 2 * rate))
+    try:
         try:
-            try:
-                result = model.transcribe(waveform, sampling_rate=rate, melody_only=bool(melody_only))
-            except RuntimeError as exc:
-                if not melody_only or not hasattr(exc, "result"):
-                    raise
-                logging.warning("YuE2Fast: melody-only score failed (%s); retrying full transcription", exc)
-                result = model.transcribe(waveform, sampling_rate=rate, melody_only=False)
-        finally:
-            del model
-            mm.soft_empty_cache()
-        abc = result.get("abc") or ""
-        logging.info("YuE2Fast transcription: %s", json.dumps({
-            "load_seconds": round(loaded - start, 1), "transcribe_seconds": round(time.perf_counter() - loaded, 1),
-            "duration_seconds": result.get("duration_seconds"), "abc_chars": len(abc),
-            "warnings": result.get("warnings", []), "abc_error": result.get("abc_error")}, default=str))
-        if not abc:
-            raise RuntimeError(f"SheetSage2 produced no score: {result.get('abc_error')}")
-        return (abc,)
+            result = model.transcribe(waveform, sampling_rate=rate, melody_only=bool(melody_only))
+        except RuntimeError as exc:
+            if not melody_only or not hasattr(exc, "result"):
+                raise
+            logging.warning("YuE2Fast: melody-only score failed (%s); retrying full transcription", exc)
+            result = model.transcribe(waveform, sampling_rate=rate, melody_only=False)
+    finally:
+        del model
+        mm.soft_empty_cache()
+    abc = result.get("abc") or ""
+    logging.info("YuE2Fast transcription: %s", json.dumps({
+        "load_seconds": round(loaded - start, 1), "transcribe_seconds": round(time.perf_counter() - loaded, 1),
+        "duration_seconds": result.get("duration_seconds"), "abc_chars": len(abc),
+        "warnings": result.get("warnings", []), "abc_error": result.get("abc_error")}, default=str))
+    if not abc:
+        raise RuntimeError(f"SheetSage2 produced no score: {result.get('abc_error')}")
+    return abc
 
 
 NODE_CLASS_MAPPINGS = {"YuE2FastLoadAudio": YuE2FastLoadAudio, "YuE2FastTranscribe": YuE2FastTranscribe}
