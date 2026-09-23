@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -73,7 +74,11 @@ def _download(url):
     os.close(fd)
     request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})  # some WAFs 403 urllib's UA
     with urllib.request.urlopen(request, timeout=120) as response, open(path, "wb") as f:
-        f.write(response.read())
+        data = response.read()
+        f.write(data)
+        # Host only: Telegram file URLs embed the bot token.
+        logging.info("YuE2Fast: downloaded %d bytes from %s (%s)", len(data), urllib.parse.urlsplit(url).hostname,
+                     response.headers.get("Content-Type", "?"))
     return path
 
 

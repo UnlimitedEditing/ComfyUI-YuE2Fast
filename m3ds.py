@@ -35,13 +35,33 @@ def encode(data: bytes, filename: str, min_side: int = 256) -> Image.Image:
     return Image.fromarray(np.frombuffer(raw, dtype=np.uint8).reshape(height, width, CHANNELS), "RGB")
 
 
+def describe(image, size):
+    return f"{image.format or '?'} {image.width}x{image.height} {image.mode}, {size} bytes"
+
+
 def decode_png_bytes(png: bytes):
     image = Image.open(io.BytesIO(png))
-    if image.mode != "RGB":
-        if image.mode not in ("RGBA", "P", "L"):
-            raise ValueError(f"Unexpected PNG mode {image.mode}; the score image was re-encoded")
-        image = image.convert("RGB")
-    return decode_pixels(np.asarray(image, dtype=np.uint8).reshape(-1).tobytes())
+    info = describe(image, len(png))
+    if image.format != "PNG":
+        raise ValueError(f"The score image arrived as {info}, not the original PNG: it was recompressed on the way "
+                         "(chat apps convert photos to JPEG). Send the original PNG as a file/document.")
+    pixels = np.asarray(image.convert("RGB"), dtype=np.uint8)
+    try:
+        return decode_pixels(pixels.reshape(-1).tobytes())
+    except ValueError as exc:
+        # A host may have enlarged it with nearest-neighbour scaling: every source pixel becomes a
+        # uniform k x k block, which is reversible. Smoothed or shrunk images are not.
+        for k in range(2, 9):
+            h, w = pixels.shape[0] // k * k, pixels.shape[1] // k * k
+            if h < k or w < k:
+                break
+            blocks = pixels[:h, :w].reshape(h // k, k, w // k, k, 3)
+            if (blocks == blocks[:, :1, :, :1]).all():
+                try:
+                    return decode_pixels(blocks[:, 0, :, 0].reshape(-1).tobytes())
+                except ValueError:
+                    pass
+        raise ValueError(f"{exc} Received {info}.") from None
 
 
 def decode_pixels(flat: bytes):
@@ -50,7 +70,8 @@ def decode_pixels(flat: bytes):
     (magic, version, flags, index, count, blob_total, payload_len, chunk_crc,
      orig_len, orig_crc, fname_len) = struct.unpack(HEADER_FMT, flat[:HEADER_SIZE])
     if magic != MAGIC:
-        raise ValueError("Not an M3DS score image (bad magic) -- was it sent as a compressed photo instead of a file?")
+        raise ValueError("Not an M3DS score image (bad magic): the pixels were changed after the job saved it "
+                         "(recompressed, resized or re-encoded), or it isn't a YuE2 score PNG.")
     if version != VERSION or count != 1:
         raise ValueError(f"Unsupported M3DS image (version {version}, {count} chunks)")
     pos = HEADER_SIZE
