@@ -10,6 +10,7 @@ import os
 import folder_paths
 
 from . import m3ds
+from .abc_input import normalize_abc
 from .cover import _resolve
 
 PACKAGE_FORMAT = "yue2-score"
@@ -106,9 +107,10 @@ class YuE2FastSource:
     FUNCTION = "resolve"
     RETURN_TYPES = ("STRING", "STRING", "STRING", "INT", "STRING")
     RETURN_NAMES = ("abc", "style", "lyrics", "seed", "mode")
-    DESCRIPTION = ("One entry point for YuE2: a score PNG -> re-render that score; else source audio -> cover "
-                   "(SheetSage2 melody score); else nothing -> YuE2 composes from style + lyrics. Empty style/lyrics "
-                   "and seed=-1 fall back to the score PNG's stored values, then to defaults.")
+    DESCRIPTION = ("One entry point for YuE2: typed/pasted ABC -> render that score; else a score PNG -> re-render "
+                   "that score; else source audio -> cover (SheetSage2 melody score); else nothing -> YuE2 composes "
+                   "from style + lyrics. Empty style/lyrics and seed=-1 fall back to the score PNG's stored values, "
+                   "then to defaults.")
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -124,17 +126,27 @@ class YuE2FastSource:
             "seed": ("INT", {"default": -1, "min": -1, "max": 0x7FFFFFFFFFFFFFFF}),
             "source_seconds": ("INT", {"default": 240, "min": 10, "max": 300, "tooltip": "Cover mode: seconds of source audio to transcribe."}),
             "melody_only": ("BOOLEAN", {"default": True, "tooltip": "Cover mode: melody-only score (recommended) vs. with chords."}),
+        }, "optional": {
+            # Optional so workflows saved before this input existed still validate.
+            "abc_text": ("STRING", {"multiline": True, "default": "", "tooltip": "ABC notation to render as the score (wins over a score PNG or source audio). Real newlines, a literal backslash-n, or @@ all work as line breaks."}),
         }}
 
     def resolve(self, image_url, image_url_alt, image_filename, audio_url, audio_url_alt, audio_filename,
-                style, lyrics, seed, source_seconds, melody_only):
+                style, lyrics, seed, source_seconds, melody_only, abc_text=""):
         from .cover import load_source_audio, transcribe_audio
         images = {"image_url": image_url, "image_url_alt": image_url_alt, "image_filename": image_filename}
         audios = {"audio_url": audio_url, "audio_url_alt": audio_url_alt, "audio_filename": audio_filename}
         has_image = any((v or "").strip() for v in images.values())
         has_audio = any((v or "").strip() for v in audios.values())
         stored = {}
-        if has_image:
+        if (abc_text or "").strip():
+            if has_image or has_audio:
+                logging.warning("YuE2Fast: ABC text was given along with a score PNG / source audio; using the ABC text")
+            abc, notes = normalize_abc(abc_text)
+            mode = "abc"
+            logging.info("YuE2Fast ABC input: %d chars in, %d lines out, %s", len(abc_text), len(abc.splitlines()),
+                         "; ".join(notes) or "no changes")
+        elif has_image:
             if has_audio:
                 logging.warning("YuE2Fast: both a score PNG and source audio were given; using the score PNG")
             stored, name = read_score_png(images)

@@ -101,11 +101,23 @@ class YuE2FastSong:
             "backend": (["torch", "torch-eager"], {"default": "torch", "tooltip": "torch = CUDA graphs (fast). torch-eager = fallback."}),
             # Optional so workflows saved before this input existed still validate.
             "abc": ("STRING", {"forceInput": True, "tooltip": "Supplied score (e.g. from YuE2 Fast Transcribe). Skips score planning; use planning=melody for covers."}),
+            "instrumental": ("INT", {"default": 0, "min": 0, "max": 1, "tooltip": "1 = force an instrumental: the score's V: Vocal voice becomes rests (chords kept), vocal sections become interlude, lyrics are dropped and the style says so. Without a supplied score, the score is planned first (using your lyrics as a section skeleton) and then stripped."}),
         }}
 
     def generate(self, style, lyrics, planning, seed, max_abc_tokens, max_duration, acoustic_steps,
-                 temperature=1.0, top_p=0.95, top_k=100, repetition_penalty=1.2, guidance=0.0, backend="torch", abc=None):
+                 temperature=1.0, top_p=0.95, top_k=100, repetition_penalty=1.2, guidance=0.0, backend="torch", abc=None,
+                 instrumental=0):
         abc = (abc or "").strip() or None
+        instrumental = bool(instrumental)
+        plan_lyrics, plan_first = lyrics, False
+        if instrumental:
+            from .abc_input import instrumental_style, make_instrumental
+            style = instrumental_style(style)
+            lyrics = ""
+            if abc is not None:
+                abc = make_instrumental(abc)
+            elif planning != "off":
+                plan_first = True
         if abc is not None:
             # A supplied score decides the mode: chord symbols -> full, melody-only -> melody
             # (matches the official cover recipe and SheetSage2's with-chords fallback).
@@ -113,27 +125,39 @@ class YuE2FastSong:
         # Log what the host actually passed in (Graydient field mappings are otherwise invisible).
         logging.info("YuE2Fast inputs: %s", json.dumps({
             "planning": planning, "seed": seed, "max_abc_tokens": max_abc_tokens, "max_duration": max_duration,
-            "acoustic_steps": acoustic_steps, "guidance": guidance, "backend": backend,
+            "acoustic_steps": acoustic_steps, "guidance": guidance, "backend": backend, "instrumental": instrumental,
             "style": style[:200], "lyrics_chars": len(lyrics), "lyrics_head": lyrics[:120],
             "abc_chars": len(abc or "")}))
         pipe = _pipeline(backend)
         pipe.generation_config = dataclasses.replace(pipe.generation_config, ode_steps=int(acoustic_steps))
         semantic_max = int(max_duration) * 25
+        abc_sampling = {"max_tokens": int(max_abc_tokens), "min_tokens": min(32, int(max_abc_tokens))}
+
+        def attempt(fn, **kw):
+            try:
+                return fn(**kw)
+            except RuntimeError as exc:
+                if pipe.backend == "torch-eager" or isinstance(exc, torch.cuda.OutOfMemoryError):
+                    raise
+                logging.warning("YuE2Fast: CUDA-graph backend failed (%s); retrying eager", exc)
+                pipe.backend = "torch-eager"
+                return fn(**kw)
+
+        if plan_first:
+            plan = attempt(pipe.plan, style=style, lyrics=plan_lyrics, cot=planning, seed=int(seed),
+                           abc_sampling=abc_sampling, cancelled=mm.processing_interrupted)
+            if plan.abc:
+                abc = make_instrumental(plan.abc)
+                planning = "full" if re.search(r'"[^"]+"', abc.split("K:", 1)[-1]) else "melody"
+                logging.info("YuE2Fast instrumental: planned %d score tokens, vocal voice stripped", len(plan.abc_ids))
         kwargs = dict(style=style, lyrics=lyrics, cot=planning, seed=int(seed), abc=abc,
                       cfg_scale=None if guidance == 0 else float(guidance),
-                      abc_sampling={"max_tokens": int(max_abc_tokens), "min_tokens": min(32, int(max_abc_tokens))},
+                      abc_sampling=abc_sampling,
                       semantic_sampling={"max_tokens": semantic_max, "min_tokens": min(200, semantic_max),
                                          "temperature": float(temperature), "top_p": float(top_p),
                                          "top_k": int(top_k), "repetition_penalty": float(repetition_penalty)},
                       cancelled=mm.processing_interrupted)
-        try:
-            song = pipe(**kwargs)
-        except RuntimeError as exc:
-            if pipe.backend == "torch-eager" or isinstance(exc, torch.cuda.OutOfMemoryError):
-                raise
-            logging.warning("YuE2Fast: CUDA-graph backend failed (%s); retrying eager", exc)
-            pipe.backend = "torch-eager"
-            song = pipe(**kwargs)
+        song = attempt(pipe, **kwargs)
         timing = song.timing
         summary = {phase: {k: timing[phase].get(k) for k in ("output_tokens", "seconds", "output_tps", "execution", "attention")}
                    for phase in ("abc", "semantic")}
@@ -145,7 +169,8 @@ class YuE2FastSong:
         from .score import package
         score_package = package(abc=song.abc or "", style=style, lyrics=lyrics, seed=int(seed), planning=planning,
                                 max_duration=int(max_duration), acoustic_steps=int(acoustic_steps),
-                                audio_seconds=round(summary["audio_seconds"], 2), truncated=song.truncated)
+                                audio_seconds=round(summary["audio_seconds"], 2), truncated=song.truncated,
+                                instrumental=instrumental)
         return ({"waveform": waveform, "sample_rate": song.sample_rate}, song.abc or "", score_package)
 
 
