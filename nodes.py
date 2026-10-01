@@ -104,14 +104,14 @@ class YuE2FastSong:
             # Optional so workflows saved before this input existed still validate.
             "abc": ("STRING", {"forceInput": True, "tooltip": "Supplied score (e.g. from YuE2 Fast Transcribe). Skips score planning; use planning=melody for covers."}),
             "instrumental": ("INT", {"default": 0, "min": 0, "max": 1, "tooltip": "1 = force an instrumental: the score's V: Vocal voice becomes rests (chords kept), vocal sections become interlude, lyrics are dropped and the style says so. Without a supplied score, the score is planned first (using your lyrics as a section skeleton) and then stripped."}),
-            "lora": (["none"] + sorted(LORA.ADAPTERS), {"default": "none", "tooltip": "Named LoRA adapter pair (AR + NAR) applied as forward-time deltas -- 0/0 scale reproduces the base model."}),
+            "lora_on": ("INT", {"default": 0, "min": 0, "max": 1, "tooltip": "1 = apply the Two Steps From Hell LoRA pair (AR + NAR, epic orchestral trailer music) as forward-time deltas; 0 = base model."}),
             "lora_ar_scale": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.05, "tooltip": "AR (planning) adapter strength: structure, melody, genre."}),
             "lora_nar_scale": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.05, "tooltip": "NAR (synthesis) adapter strength: the acoustic texture/timbre. 0.3-0.7 is the adapter author's recommended range."}),
         }}
 
     def generate(self, style, lyrics, planning, seed, max_abc_tokens, max_duration, acoustic_steps,
                  temperature=1.0, top_p=0.95, top_k=100, repetition_penalty=1.2, guidance=0.0, backend="torch", abc=None,
-                 instrumental=0, lora="none", lora_ar_scale=0.5, lora_nar_scale=0.5):
+                 instrumental=0, lora_on=0, lora_ar_scale=0.5, lora_nar_scale=0.5):
         abc = (abc or "").strip() or None
         instrumental = bool(instrumental)
         plan_lyrics, plan_first = lyrics, False
@@ -131,12 +131,12 @@ class YuE2FastSong:
         logging.info("YuE2Fast inputs: %s", json.dumps({
             "planning": planning, "seed": seed, "max_abc_tokens": max_abc_tokens, "max_duration": max_duration,
             "acoustic_steps": acoustic_steps, "guidance": guidance, "backend": backend, "instrumental": instrumental,
-            "lora": lora, "lora_ar_scale": lora_ar_scale, "lora_nar_scale": lora_nar_scale,
+            "lora_on": bool(lora_on), "lora_ar_scale": lora_ar_scale, "lora_nar_scale": lora_nar_scale,
             "style": style[:200], "lyrics_chars": len(lyrics), "lyrics_head": lyrics[:120],
             "abc_chars": len(abc or "")}))
         pipe = _pipeline(backend)
-        if lora != "none":
-            LORA.apply_lora(pipe._load_model(), lora, lora_ar_scale, lora_nar_scale)
+        if lora_on:
+            LORA.apply_lora(pipe._load_model(), "two-steps-from-hell", lora_ar_scale, lora_nar_scale)
         else:
             LORA.disable_all(pipe._load_model())
         pipe.generation_config = dataclasses.replace(pipe.generation_config, ode_steps=int(acoustic_steps))
