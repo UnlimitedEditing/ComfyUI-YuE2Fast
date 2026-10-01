@@ -1,0 +1,589 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<title>YuE2 Groove Box</title>
+<meta name="description" content="Play touch instruments on a small stage, record them into loops, and take the result to YuE2 as ABC notation.">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&display=swap">
+<style>
+  /* A stage at night: dark floor, one amber spotlight, each instrument wears its own colour. Single theme by design. */
+  :root {
+    color-scheme: dark;
+    --bg: #0f1118; --floor: #171a24; --panel: #1c202c; --raise: #252a39; --ink: #f2efe8; --muted: #9ba1ae; --line: #2d3344;
+    --accent: #f3a63b; --accent-ink: #1a1206; --rec: #ff4d4d; --ok: #5ed39a; --err: #ff7a7a; --warn: #f0b35a;
+    --display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+    --body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.4 var(--body); overscroll-behavior: none; -webkit-tap-highlight-color: transparent; }
+  button, select, input, textarea { font: inherit; color: inherit; }
+  button { background: var(--raise); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; min-height: 42px; cursor: pointer; user-select: none; -webkit-user-select: none; }
+  button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+  button.arm { background: var(--warn); color: var(--accent-ink); border-color: var(--warn); }
+  button.ghost { background: transparent; }
+  select, input[type=text], input[type=number], textarea { background: var(--floor); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; min-height: 42px; width: 100%; }
+  input[type=range] { width: 100%; accent-color: var(--accent); height: 32px; }
+  .app { height: 100%; display: flex; flex-direction: column; padding-top: env(safe-area-inset-top, 0px); }
+
+  /* top bar */
+  .top { display: flex; align-items: center; gap: 8px; padding: 8px 12px; }
+  .top h1 { font: 700 18px/1 var(--display); margin: 0; letter-spacing: -0.01em; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .top h1 small { font: 500 12px/1 var(--body); color: var(--muted); margin-left: 8px; }
+  .chip { border-radius: 999px; padding: 6px 12px; min-height: 36px; font-size: 13px; }
+  .engine { font-size: 11px; color: var(--muted); padding: 0 12px 4px; display: flex; gap: 8px; align-items: center; min-height: 16px; }
+  .engine .bar { flex: 1; max-width: 160px; height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; }
+  .engine .bar i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .3s; }
+
+  /* stage */
+  .stage { flex: 1; min-height: 0; position: relative; margin: 0 12px; border-radius: 18px; overflow: hidden; background: radial-gradient(120% 70% at 50% 0%, color-mix(in srgb, var(--inst, var(--accent)) 28%, var(--floor)) 0%, var(--floor) 60%, #0c0e15 100%); border: 1px solid var(--line); display: flex; flex-direction: column; }
+  .inst-bar { display: flex; align-items: center; gap: 6px; padding: 8px 10px; }
+  .inst-bar .name { font: 700 16px/1.1 var(--display); flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .inst-bar .name small { display: block; font: 400 12px/1.2 var(--body); color: var(--muted); margin-top: 3px; }
+  .inst-bar button { min-height: 36px; padding: 4px 10px; font-size: 13px; }
+  .surface { flex: 1; min-height: 0; position: relative; touch-action: none; user-select: none; -webkit-user-select: none; }
+  .hint { text-align: center; font-size: 12px; color: var(--muted); padding: 4px 12px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .progress { height: 4px; background: var(--line); }
+  .progress i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .08s linear; }
+
+  /* controllers */
+  .keys { position: absolute; inset: 8px; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; }
+  .key { border-radius: 14px 14px 18px 18px; background: linear-gradient(180deg, #f4f1ea, #d9d4c7); color: #1a1a1a; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; padding-bottom: 14px; gap: 2px; font-weight: 700; box-shadow: 0 6px 0 #9a9385; }
+  .key small { font-weight: 400; font-size: 11px; color: #5a5a5a; }
+  .key.tonic { background: linear-gradient(180deg, var(--inst), color-mix(in srgb, var(--inst) 70%, #000)); color: #fff; box-shadow: 0 6px 0 color-mix(in srgb, var(--inst) 50%, #000); }
+  .key.tonic small { color: rgba(255,255,255,.75); }
+  .key.hit { transform: translateY(5px); box-shadow: 0 1px 0 #9a9385; filter: brightness(1.15); }
+  .pads { position: absolute; inset: 8px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .pad { border-radius: 14px; background: color-mix(in srgb, var(--pad, var(--inst)) 22%, var(--raise)); border: 1px solid color-mix(in srgb, var(--pad, var(--inst)) 50%, var(--line)); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-weight: 700; font-size: 15px; min-height: 0; }
+  .pad small { font-weight: 400; font-size: 11px; color: var(--muted); }
+  .pad.hit { background: var(--pad, var(--inst)); color: #fff; transform: scale(.96); }
+  .pad.hit small { color: rgba(255,255,255,.8); }
+  .piece { position: absolute; transform: translate(-50%, -50%); border-radius: 50%; display: flex; align-items: center; justify-content: center; text-align: center; font-weight: 700; font-size: 13px; line-height: 1.1; border: 3px solid rgba(255,255,255,.25); background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--pad) 55%, #fff) 0%, var(--pad) 45%, color-mix(in srgb, var(--pad) 45%, #000) 100%); color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.5); box-shadow: 0 10px 24px rgba(0,0,0,.45); }
+  .piece.flat { border-radius: 50% / 35%; }
+  .piece.hit { transform: translate(-50%, -50%) scale(.92); filter: brightness(1.3); }
+  .kitfloor { position: absolute; left: 6%; right: 6%; bottom: 4%; height: 26%; border-radius: 50%; background: radial-gradient(ellipse at center, rgba(255,255,255,.08), transparent 70%); }
+  .strings { position: absolute; inset: 10px 8px; display: flex; justify-content: space-around; }
+  .string { position: relative; width: 1px; flex: 1; display: flex; justify-content: center; }
+  .string::before { content: ""; position: absolute; top: 0; bottom: 0; width: 3px; border-radius: 2px; background: linear-gradient(180deg, #fff6d6, #cbb98a); box-shadow: 0 0 6px rgba(255,230,170,.5); }
+  .string.tonic::before { background: linear-gradient(180deg, color-mix(in srgb, var(--inst) 40%, #fff), var(--inst)); }
+  .string .lbl { position: absolute; bottom: 4px; font-size: 12px; color: var(--muted); background: rgba(0,0,0,.35); padding: 2px 6px; border-radius: 8px; }
+  .string.hit::before { animation: twang .25s ease-out; background: #fff; }
+  @keyframes twang { 0% { transform: scaleX(6); opacity: .8; } 100% { transform: scaleX(1); opacity: 1; } }
+  .xy { position: absolute; inset: 8px; border-radius: 14px; background: repeating-linear-gradient(90deg, transparent 0, transparent calc(100% / var(--cols) - 1px), rgba(255,255,255,.08) calc(100% / var(--cols) - 1px), rgba(255,255,255,.08) calc(100% / var(--cols))), linear-gradient(180deg, rgba(255,255,255,.07), transparent); }
+  .xy .lbls { position: absolute; left: 0; right: 0; bottom: 6px; display: grid; grid-template-columns: repeat(var(--cols), 1fr); text-align: center; font-size: 10px; color: var(--muted); pointer-events: none; }
+  .xy .dot { position: absolute; width: 56px; height: 56px; border-radius: 50%; background: radial-gradient(circle, #fff 0%, var(--inst) 40%, transparent 70%); transform: translate(-50%, -50%); opacity: 0; pointer-events: none; }
+  .xy .dot.on { opacity: .9; }
+  .bubble { position: absolute; width: var(--d); height: var(--d); border-radius: 50%; transform: translate(-50%, -50%); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; color: #fff; background: radial-gradient(circle at 35% 30%, rgba(255,255,255,.55), color-mix(in srgb, var(--inst) 60%, transparent) 50%, color-mix(in srgb, var(--inst) 35%, transparent) 100%); border: 1px solid rgba(255,255,255,.35); box-shadow: 0 8px 20px rgba(0,0,0,.35); }
+  .bubble.pop { animation: pop .35s ease-out forwards; }
+  @keyframes pop { 0% { transform: translate(-50%, -50%) scale(1); } 100% { transform: translate(-50%, -50%) scale(1.8); opacity: 0; } }
+  .chordgrid { position: absolute; inset: 8px; display: grid; grid-template-rows: auto 1fr; gap: 8px; }
+  .barsel { display: flex; gap: 6px; flex-wrap: wrap; }
+  .barsel button { flex: 1; min-height: 44px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; line-height: 1.1; padding: 4px; }
+  .barsel button small { color: var(--muted); font-size: 11px; }
+  .barsel button.on small { color: inherit; }
+  .barsel button.live { box-shadow: inset 0 0 0 2px var(--accent); }
+  .chordpads { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; min-height: 0; }
+  @media (prefers-reduced-motion: reduce) { .string.hit::before, .bubble.pop { animation: none; } .progress i { transition: none; } }
+
+  /* deck + transport */
+  .deck { display: flex; gap: 8px; padding: 10px 12px 4px; overflow-x: auto; scrollbar-width: none; }
+  .deck::-webkit-scrollbar { display: none; }
+  .deck button { flex: 0 0 auto; border-radius: 999px; padding: 8px 14px; display: flex; align-items: center; gap: 8px; }
+  .deck button b { width: 10px; height: 10px; border-radius: 50%; background: var(--c); display: inline-block; }
+  .deck button.on { background: var(--c); color: #fff; border-color: var(--c); }
+  .deck button.on b { background: #fff; }
+  .transport { display: flex; align-items: center; gap: 8px; padding: 8px 12px calc(10px + env(safe-area-inset-bottom, 0px)); }
+  .transport .big { min-width: 64px; min-height: 52px; font-weight: 700; font-size: 17px; border-radius: 14px; }
+  .transport .rec.on { background: var(--rec); border-color: var(--rec); color: #fff; animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: .65; } }
+  .tempo { flex: 1; display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .tempo button { min-width: 42px; padding: 0; }
+  .tempo output { font: 700 15px/1 var(--display); min-width: 64px; text-align: center; }
+  .tempo output small { display: block; font: 400 10px/1 var(--body); color: var(--muted); margin-top: 3px; }
+  .status { font-size: 12px; color: var(--muted); padding: 0 12px 6px; min-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .status.ok { color: var(--ok); } .status.err { color: var(--err); } .status.warn { color: var(--warn); }
+
+  /* sheets */
+  .scrim { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 20; display: none; }
+  .scrim.open { display: block; }
+  .sheet { position: fixed; left: 0; right: 0; bottom: 0; max-height: 88%; background: var(--panel); border-radius: 20px 20px 0 0; border-top: 1px solid var(--line); z-index: 21; display: none; flex-direction: column; padding-bottom: env(safe-area-inset-bottom, 0px); }
+  .sheet.open { display: flex; }
+  .sheet header { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  .sheet header h2 { font: 700 18px/1 var(--display); margin: 0; flex: 1; }
+  .sheet .body { overflow-y: auto; padding: 14px 16px 20px; display: grid; gap: 14px; }
+  .field { display: grid; gap: 6px; }
+  .field > span { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; min-width: 44px; }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .swatches { display: flex; gap: 8px; flex-wrap: wrap; }
+  .swatch { width: 36px; height: 36px; border-radius: 50%; border: 3px solid transparent; padding: 0; min-height: 0; }
+  .swatch.on { border-color: #fff; }
+  .list { display: grid; gap: 6px; }
+  .list .item { display: flex; gap: 8px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--floor); }
+  .list .item .grow { flex: 1; min-width: 0; }
+  .list .item .meta { font-size: 12px; color: var(--muted); }
+  .list .item button { min-height: 36px; padding: 4px 10px; font-size: 13px; }
+  #abcOut { font-family: var(--mono); font-size: 12px; min-height: 160px; white-space: pre; overflow: auto; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .ok { color: var(--ok); } .err { color: var(--err); }
+  a { color: var(--accent); }
+  @media (min-width: 900px) {
+    .app { max-width: 1100px; margin: 0 auto; }
+    .stage { margin: 0 16px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="top">
+    <h1>Groove Box <small id="loopName"></small></h1>
+    <button id="openSettings" class="chip" aria-label="Key, tempo and loops"><span id="keyChip">C major</span> · <span id="bpmChip">104</span></button>
+    <button id="openScore" class="chip" title="The score as ABC notation">Score</button>
+    <button id="openSaved" class="chip" aria-label="Saved grooves">Saved</button>
+  </div>
+  <div class="engine"><span id="engineText">Loading instruments…</span><span class="bar"><i id="engineBar"></i></span></div>
+  <section class="stage" id="stage">
+    <div class="inst-bar">
+      <div class="name" id="instName">Voice<small>Keys</small></div>
+      <span class="seg" id="octSeg" aria-label="Octave"><button data-d="-1">−8va</button><button data-d="1">+8va</button></span>
+      <button id="editInst" aria-label="Change this instrument">Change</button>
+    </div>
+    <div class="surface" id="surface"></div>
+    <div class="hint" id="hint"></div>
+    <div class="progress"><i id="progress"></i></div>
+  </section>
+  <nav class="deck" id="deck" aria-label="Instruments"></nav>
+  <div class="transport">
+    <button id="play" class="big" aria-label="Play">▶</button>
+    <button id="rec" class="big rec" aria-pressed="false" title="Record what you play into the loop">●</button>
+    <div class="tempo">
+      <button id="bpmDown" aria-label="Slower">−</button>
+      <output id="bpmOut">104<small>BPM</small></output>
+      <button id="bpmUp" aria-label="Faster">+</button>
+    </div>
+  </div>
+  <div id="status" class="status" role="status"></div>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<section class="sheet" id="sheetSettings" aria-label="Settings">
+  <header><h2>Key, tempo &amp; loops</h2><button class="close ghost">Done</button></header>
+  <div class="body">
+    <div class="row">
+      <label class="field" style="flex:1"><span>Key</span><select id="key"></select></label>
+      <label class="field" style="flex:2"><span>Scale</span><select id="scale"></select></label>
+    </div>
+    <label class="field"><span>Tempo <output id="bpmOut2"></output> BPM</span><input id="bpm" type="range" min="60" max="180" step="1"></label>
+    <label class="field"><span>Swing <output id="swingOut"></output>%</span><input id="swing" type="range" min="0" max="60" step="5"></label>
+    <label class="field"><span>Volume</span><input id="vol" type="range" min="0" max="100" step="1" value="80"></label>
+    <div class="field"><span>Loops</span>
+      <div class="row" id="loopTabs"></div>
+      <div class="row">
+        <input id="patName" type="text" aria-label="Loop name" style="flex:1; min-width:120px">
+        <span class="seg" id="barsSeg" aria-label="Bars"><button data-bars="1">1</button><button data-bars="2">2</button><button data-bars="4">4</button></span>
+        <button id="patNew">+ New</button><button id="patDup">Dup</button><button id="patClear">Clear</button><button id="patDel">Delete</button>
+      </div>
+    </div>
+    <div class="field"><span>Play</span><div class="row"><span class="seg" aria-label="Play the loop or the song"><button id="modeLoop" class="on">This loop</button><button id="modeSong">Whole song</button></span><span class="muted" id="songInfo"></span></div></div>
+    <div class="row">
+      <label class="row" style="gap:6px"><input id="hearChords" type="checkbox" checked style="width:auto"> hear chords</label>
+      <label class="row" style="gap:6px"><input id="hearBass" type="checkbox" checked style="width:auto"> hear bass</label>
+      <label class="row" style="gap:6px"><span class="seg"><button id="grid16" data-grid="16">16ths</button><button id="grid8" data-grid="8">8ths</button></span></label>
+      <label class="row" style="gap:6px"><span class="seg"><button data-meter="4/4">4/4</button><button data-meter="3/4">3/4</button></span></label>
+    </div>
+    <p class="muted">Sections, bar-by-bar editing and the notation view live in the <a href="groovebox.html">score editor</a>. Loops you record here show up there, and the other way round.</p>
+    <div class="row"><button id="loadDemo">Load the demo groove</button><button id="newGroove">Start empty</button></div>
+  </div>
+</section>
+
+<section class="sheet" id="sheetInst" aria-label="Instrument">
+  <header><h2 id="instSheetTitle">Add an instrument</h2><button class="close ghost">Done</button></header>
+  <div class="body">
+    <label class="field"><span>Name</span><input id="iName" type="text"></label>
+    <label class="field"><span>Sound</span><select id="iSound"></select></label>
+    <div class="field"><span>Play it with</span><div id="iCtrls" class="list"></div></div>
+    <div class="field"><span>Octave</span><div class="row"><span class="seg" id="iOct"><button data-o="-2">−2</button><button data-o="-1">−1</button><button data-o="0">0</button><button data-o="1">+1</button><button data-o="2">+2</button></span></div></div>
+    <div class="field"><span>Colour</span><div id="iColors" class="swatches"></div></div>
+    <p class="muted" id="iRole"></p>
+    <div class="row"><button id="iSave" class="on" style="flex:1">Put it on stage</button><button id="iRemove">Remove</button></div>
+  </div>
+</section>
+
+<section class="sheet" id="sheetScore" aria-label="Score">
+  <header><h2>Score (ABC)</h2><button class="close ghost">Done</button></header>
+  <div class="body">
+    <div class="row">
+      <select id="flavour" style="flex:1">
+        <option value="yue2">YuE2 score — melody + chords (planning: full)</option>
+        <option value="yue2melody">YuE2 score — melody only (planning: melody)</option>
+        <option value="standard">Standard ABC — every instrument, with a drum staff</option>
+      </select>
+    </div>
+    <div id="check" class="muted"></div>
+    <textarea id="abcOut" readonly spellcheck="false" aria-label="ABC notation"></textarea>
+    <div class="row">
+      <button id="copyAbc" class="on">Copy ABC</button>
+      <button id="dlAbc">Download .abc</button>
+      <button id="dlPng">Score PNG</button>
+      <button id="openStudio">Open in Score Studio →</button>
+      <a href="groovebox.html" class="chip" style="display:inline-flex; align-items:center; border:1px solid var(--line); text-decoration:none">Score editor →</a>
+    </div>
+    <p class="muted">Paste the ABC into the chat as <code>abc_text</code> for a YuE2 render, or send the score PNG to <code>/wf /run:score-yue2</code> as a file. The vocal line is your Voice instrument; the bass line is what you played on a Bass instrument, or follows the kick and snare. Extra layers appear in the standard ABC only.</p>
+  </div>
+</section>
+
+<section class="sheet" id="sheetSaved" aria-label="Saved grooves">
+  <header><h2>Saved grooves</h2><button class="close ghost">Done</button></header>
+  <div class="body">
+    <div class="row"><input id="saveName" type="text" placeholder="Name this groove" style="flex:1; min-width:140px"><button id="saveLib" class="on">Save</button></div>
+    <div id="lib" class="list"></div>
+    <div class="row"><button id="exportJson">Export file</button><button id="importJson">Import file</button><input id="importFile" type="file" accept=".json,application/json" hidden></div>
+    <p class="muted">Grooves are kept in this browser. Export a file to move one to another device.</p>
+  </div>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/pako@1.0.11/dist/pako.min.js"></script>
+<script src="groove-core.js"></script>
+<script src="groove-synth.js"></script>
+<script>
+"use strict";
+const G = window.Groove, SY = window.GrooveSynth, $ = id => document.getElementById(id);
+const COLORS = ["#f3a63b", "#e2574c", "#3fa7d6", "#9b6bde", "#5cc98a", "#e85d9a", "#d8c23a", "#48c7bd"];
+let P = null, curInst = 0, recArmed = false, hearChords = true, hearBass = true, controller = null, editingIndex = -1, liveBar = 0;
+
+const pat = () => G.byId(P, P.current);
+const inst = () => P.deck[curInst] || P.deck[0];
+const soundOf = i => G.SOUND_BY_ID[i.sound];
+function setStatus(msg, kind) { const el = $("status"); el.textContent = msg; el.className = "status " + (kind || ""); }
+
+// ---------- sequencer ----------
+const seq = G.Sequencer({ project: () => P, currentPattern: pat, synth: () => SY, options: () => ({ hearChords, hearBass }), onStep });
+function onStep(sIn, entry, p) {
+  if (sIn < 0) { $("progress").style.width = "0"; return; }
+  const n = G.spb(P), i = seq.state.seq.indexOf(entry);
+  $("progress").style.width = (100 * (i * n + sIn + 1) / seq.state.total) + "%";
+  if (p === pat() && entry.bar !== liveBar) { liveBar = entry.bar; if (controller && controller.onBar) controller.onBar(liveBar); }
+  if (controller && controller.onStep) controller.onStep(sIn, entry, p);
+}
+function togglePlay() {
+  if (seq.playing) { seq.stop(); $("play").textContent = "▶"; $("play").setAttribute("aria-label", "Play"); if (recArmed) setRec(false); }
+  else if (seq.start()) { $("play").textContent = "■"; $("play").setAttribute("aria-label", "Stop"); liveBar = 0; hint(); }
+  else setStatus("This browser has no Web Audio support.", "err");
+}
+function setRec(on) { recArmed = on; $("rec").classList.toggle("on", on); $("rec").setAttribute("aria-pressed", String(on)); hint(); }
+function hint() {
+  const i = inst(), c = G.CONTROLLERS.find(c => c.id === i.controller);
+  $("hint").textContent = !seq.playing ? "Playing freely. Press ▶ for the loop, ● to record into it." : recArmed ? "Recording into “" + pat().name + "”. Everything you play lands on the beat." : (c ? c.blurb : "") + " Press ● to record.";
+}
+
+// ---------- performance API handed to controllers ----------
+const pending = new Map();   // key -> {q, t0, row, midi, fixedLen}
+function midiFor(i, row) { return G.midiOfRow(P, row) + 12 * i.octave; }
+function voiceRow(i, row) { const n = G.scaleDef(P).steps.length; return G.clamp(row + n * i.octave, 0, 2 * n); }
+const api = {
+  rows: () => G.nRows(P), rowName: row => G.rowName(P, row), noteName: m => G.noteName(P, m), scaleLen: () => G.scaleDef(P).steps.length,
+  color: () => inst().color, isTonic: row => row % G.scaleDef(P).steps.length === 0,
+  press(key, row, vel, fixedLen) {
+    const i = inst(); SY.ensure();
+    const midi = i.role === "voice" ? G.midiOfRow(P, voiceRow(i, row)) : midiFor(i, row);
+    SY.noteOn(key, SY.channelFor(i.id), midi, vel == null ? 0.9 : vel);
+    if (recArmed && seq.playing) pending.set(key, { q: seq.quantizedHit(), t0: SY.now(), row, midi, fixedLen });
+    else pending.delete(key);
+  },
+  release(key) {
+    SY.noteOff(key);
+    const h = pending.get(key); if (!h) return; pending.delete(key);
+    const i = inst(), n = G.spb(P), len = G.clamp(h.fixedLen || seq.stepsHeld(SY.now() - h.t0), 1, n - h.q.abs % n);
+    if (i.role === "voice") G.addMelodyNote(P, h.q.p, h.q.abs, voiceRow(i, h.row), len);
+    else if (i.role === "bass") G.addLayerNote(P, h.q.p, "bass", h.q.abs, h.midi, len, true);
+    else G.addLayerNote(P, h.q.p, i.id, h.q.abs, h.midi, len, false);
+    changed();
+  },
+  pluck(key, row, vel, steps) { api.press(key, row, vel, steps || 2); setTimeout(() => api.release(key), 220); },
+  hit(lane) {
+    SY.drum(G.DRUM_BY_ID[lane].gm, SY.now(), 1);
+    if (recArmed && seq.playing) { const q = seq.quantizedHit(); if (G.addDrumHit(q.p, lane, q.abs)) changed(); }
+  },
+  chord(degree, bar) {
+    const c = G.chordInfo(P, degree), p = pat(), target = seq.playing ? liveBar : bar;
+    if (c) { const ch = SY.channelFor(inst().id); SY.chord(ch, [c.bassRoot + 12, ...c.voicing], SY.now(), 1.2, 0.8); }
+    if (target != null && target >= 0 && target < p.bars) { p.chords[target] = degree; changed(); return target; }
+    return -1;
+  },
+  currentBar: () => seq.playing ? liveBar : -1, pattern: pat, playing: () => seq.playing,
+};
+
+// ---------- controllers ----------
+const CTRL = {};
+CTRL.keys = {
+  mount(el, i) {
+    const n = api.scaleLen(), off = (i.kbOct || 0) * n, keys = document.createElement("div"); keys.className = "keys";
+    for (let k = 0; k <= n; k++) {
+      const row = off + k, b = document.createElement("div"); b.className = "key" + (k % n === 0 ? " tonic" : ""); b.dataset.row = row;
+      b.innerHTML = `${api.rowName(row)}<small>${G.SOLFEGE[k % n] || ""}</small>`; keys.appendChild(b);
+    }
+    el.appendChild(keys);
+    const active = new Map();
+    const keyAt = e => document.elementFromPoint(e.clientX, e.clientY)?.closest?.(".key");
+    el.onpointerdown = e => { const k = keyAt(e); if (!k) return; el.setPointerCapture(e.pointerId); active.set(e.pointerId, k); k.classList.add("hit"); api.press("k" + e.pointerId, +k.dataset.row, 0.9); };
+    el.onpointermove = e => { const prev = active.get(e.pointerId); if (!prev) return; const k = keyAt(e); if (!k || k === prev) return; prev.classList.remove("hit"); api.release("k" + e.pointerId); active.set(e.pointerId, k); k.classList.add("hit"); api.press("k" + e.pointerId, +k.dataset.row, 0.9); };
+    el.onpointerup = el.onpointercancel = e => { const k = active.get(e.pointerId); if (!k) return; k.classList.remove("hit"); active.delete(e.pointerId); api.release("k" + e.pointerId); };
+  },
+};
+CTRL.pads = {
+  mount(el, i) {
+    const pads = document.createElement("div"); pads.className = "pads"; el.appendChild(pads);
+    const drums = i.role === "drums";
+    const items = drums ? G.DRUMS.map(d => ({ label: d.label, sub: "", lane: d.id, color: d.color })) : Array.from({ length: 16 }, (_, k) => ({ label: api.rowName(k), sub: G.SOLFEGE[k % api.scaleLen()] || "", row: k }));
+    if (!drums) items.reverse();
+    for (const it of items) { const b = document.createElement("div"); b.className = "pad"; if (it.color) b.style.setProperty("--pad", it.color); b.innerHTML = `${it.label}<small>${it.sub}</small>`; b._it = it; pads.appendChild(b); }
+    const active = new Map();
+    el.onpointerdown = e => { const b = e.target.closest(".pad"); if (!b) return; b.classList.add("hit"); active.set(e.pointerId, b); if (drums) api.hit(b._it.lane); else api.press("p" + e.pointerId, b._it.row, 0.95); };
+    el.onpointerup = el.onpointercancel = e => { const b = active.get(e.pointerId); if (!b) return; active.delete(e.pointerId); setTimeout(() => b.classList.remove("hit"), 80); if (!drums) api.release("p" + e.pointerId); };
+  },
+};
+CTRL.kit = {
+  mount(el) {
+    const floor = document.createElement("div"); floor.className = "kitfloor"; el.appendChild(floor);
+    const pieces = [   // lane, x%, y%, size%, flat
+      ["crash", 82, 16, 24, true], ["hat", 18, 20, 22, true], ["tom", 40, 30, 20], ["lowtom", 64, 32, 22], ["rim", 14, 56, 15], ["snare", 32, 62, 24], ["kick", 56, 70, 34],
+      ["clap", 84, 54, 16], ["shaker", 90, 80, 14], ["ohat", 12, 84, 15],
+    ];
+    const sz = Math.min(el.clientWidth, el.clientHeight) || 320;
+    for (const [lane, x, y, s, flat] of pieces) {
+      const d = G.DRUM_BY_ID[lane], b = document.createElement("div"); b.className = "piece" + (flat ? " flat" : "");
+      b.style.left = x + "%"; b.style.top = y + "%"; b.style.width = b.style.height = Math.round(sz * s / 100 * 1.25) + "px"; if (flat) b.style.height = Math.round(sz * s / 100 * 0.8) + "px";
+      b.style.setProperty("--pad", d.color); b.textContent = d.label; b.dataset.lane = lane; el.appendChild(b);
+    }
+    el.onpointerdown = e => { const b = e.target.closest(".piece"); if (!b) return; b.classList.add("hit"); setTimeout(() => b.classList.remove("hit"), 90); api.hit(b.dataset.lane); };
+  },
+};
+CTRL.strings = {
+  mount(el, i) {
+    const n = api.scaleLen(), off = (i.kbOct || 0) * n, wrap = document.createElement("div"); wrap.className = "strings"; el.appendChild(wrap);
+    const strings = [];
+    for (let k = 0; k <= n; k++) { const row = off + k, s = document.createElement("div"); s.className = "string" + (k % n === 0 ? " tonic" : ""); s.dataset.row = row; s.innerHTML = `<span class="lbl">${api.rowName(row)}</span>`; wrap.appendChild(s); strings.push(s); }
+    const idxAt = e => { const r = wrap.getBoundingClientRect(); return G.clamp(Math.floor((e.clientX - r.left) / r.width * strings.length), 0, strings.length - 1); };
+    const last = new Map();
+    const pluck = (s, vel) => { s.classList.remove("hit"); void s.offsetWidth; s.classList.add("hit"); api.pluck("s" + s.dataset.row + Math.random(), +s.dataset.row, vel, 2); };
+    el.onpointerdown = e => { el.setPointerCapture(e.pointerId); const k = idxAt(e); last.set(e.pointerId, k); pluck(strings[k], 0.95); };
+    el.onpointermove = e => { if (!last.has(e.pointerId)) return; const k = idxAt(e), prev = last.get(e.pointerId); if (k === prev) return; const dir = k > prev ? 1 : -1; for (let j = prev + dir; dir > 0 ? j <= k : j >= k; j += dir) pluck(strings[j], 0.8); last.set(e.pointerId, k); };
+    el.onpointerup = el.onpointercancel = e => last.delete(e.pointerId);
+  },
+};
+CTRL.xy = {
+  mount(el) {
+    const cols = api.rows(), pad = document.createElement("div"); pad.className = "xy"; pad.style.setProperty("--cols", cols); el.appendChild(pad);
+    const lbls = document.createElement("div"); lbls.className = "lbls"; for (let r = 0; r < cols; r++) { const s = document.createElement("span"); s.textContent = api.rowName(r); lbls.appendChild(s); } pad.appendChild(lbls);
+    const dots = new Map(), state = new Map();
+    const where = e => { const r = pad.getBoundingClientRect(); return { row: G.clamp(Math.floor((e.clientX - r.left) / r.width * cols), 0, cols - 1), vel: G.clamp(1 - (e.clientY - r.top) / r.height, 0.2, 1), x: e.clientX - r.left, y: e.clientY - r.top }; };
+    el.onpointerdown = e => { el.setPointerCapture(e.pointerId); const w = where(e), d = document.createElement("div"); d.className = "dot on"; d.style.left = w.x + "px"; d.style.top = w.y + "px"; pad.appendChild(d); dots.set(e.pointerId, d); state.set(e.pointerId, w.row); api.press("x" + e.pointerId, w.row, w.vel); };
+    el.onpointermove = e => { if (!state.has(e.pointerId)) return; const w = where(e), d = dots.get(e.pointerId); d.style.left = w.x + "px"; d.style.top = w.y + "px"; if (w.row !== state.get(e.pointerId)) { api.release("x" + e.pointerId); api.press("x" + e.pointerId, w.row, w.vel); state.set(e.pointerId, w.row); } };
+    el.onpointerup = el.onpointercancel = e => { if (!state.has(e.pointerId)) return; state.delete(e.pointerId); dots.get(e.pointerId).remove(); dots.delete(e.pointerId); api.release("x" + e.pointerId); };
+  },
+};
+CTRL.bubbles = {
+  mount(el) {
+    const n = api.rows(), items = [], count = 9, reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const spawn = b => { b.row = Math.floor(Math.random() * n); b.x = 10 + Math.random() * 80; b.y = 12 + Math.random() * 76; b.vx = (Math.random() - 0.5) * 0.08; b.vy = (Math.random() - 0.5) * 0.06; b.d = 54 + (n - 1 - b.row) * 1.2; b.el.textContent = api.rowName(b.row); b.el.style.setProperty("--d", b.d + "px"); b.el.classList.remove("pop"); };
+    for (let k = 0; k < count; k++) { const b = { el: document.createElement("div") }; b.el.className = "bubble"; spawn(b); el.appendChild(b.el); b.el._b = b; items.push(b); }
+    const draw = () => { for (const b of items) { b.el.style.left = b.x + "%"; b.el.style.top = b.y + "%"; } };
+    let raf = 0; const step = () => { for (const b of items) { b.x += b.vx; b.y += b.vy; if (b.x < 8 || b.x > 92) b.vx *= -1; if (b.y < 10 || b.y > 90) b.vy *= -1; } draw(); raf = requestAnimationFrame(step); };
+    draw(); if (!reduce) raf = requestAnimationFrame(step);
+    el.onpointerdown = e => { const t = e.target.closest(".bubble"); if (!t) return; const b = t._b; api.pluck("b" + Math.random(), b.row, 0.9, 2); t.classList.add("pop"); setTimeout(() => spawn(b), 350); };
+    this.unmount = () => cancelAnimationFrame(raf);
+  },
+};
+CTRL.chords = {
+  mount(el) {
+    const wrap = document.createElement("div"); wrap.className = "chordgrid"; el.appendChild(wrap);
+    const bars = document.createElement("div"); bars.className = "barsel"; wrap.appendChild(bars);
+    const grid = document.createElement("div"); grid.className = "chordpads"; wrap.appendChild(grid);
+    let sel = 0;
+    const renderBars = () => {
+      bars.innerHTML = ""; const p = pat(), live = api.currentBar();
+      for (let b = 0; b < p.bars; b++) { const c = G.barChord(P, p, b), btn = document.createElement("button"); btn.className = (b === sel ? "on" : "") + (b === live ? " live" : ""); btn.innerHTML = `${c ? c.symbol : "—"}<small>bar ${b + 1}</small>`; btn.onclick = () => { sel = b; renderBars(); }; bars.appendChild(btn); }
+    };
+    renderBars();
+    const pads = [{ degree: -1, symbol: "—", numeral: "no chord" }].concat([0, 1, 2, 3, 4, 5, 6].map(d => G.chordInfo(P, d)));
+    for (const c of pads) { const b = document.createElement("div"); b.className = "pad"; b.innerHTML = `${c.symbol}<small>${c.numeral}</small>`; b._c = c; grid.appendChild(b); }
+    el.onpointerdown = e => { const b = e.target.closest(".pad"); if (!b) return; b.classList.add("hit"); setTimeout(() => b.classList.remove("hit"), 120); const t = api.chord(b._c.degree, sel); if (t >= 0) { sel = t; } renderBars(); };
+    this.onBar = () => renderBars();
+  },
+};
+function mountController() {
+  const el = $("surface"); if (controller && controller.unmount) controller.unmount();
+  el.innerHTML = ""; el.onpointerdown = el.onpointermove = el.onpointerup = el.onpointercancel = null;
+  const i = inst(); if (!i) return;
+  const c = Object.create(CTRL[i.controller] || CTRL.keys); c.mount(el, i); controller = c;
+  $("stage").style.setProperty("--inst", i.color); $("surface").style.setProperty("--inst", i.color);
+  const cdef = G.CONTROLLERS.find(c => c.id === i.controller);
+  $("instName").innerHTML = `${i.name}<small>${soundOf(i).name} · ${cdef ? cdef.name : ""}</small>`;
+  $("octSeg").style.visibility = i.role === "drums" || i.role === "chords" ? "hidden" : "visible";
+  hint();
+}
+
+// ---------- rendering ----------
+function renderDeck() {
+  const el = $("deck"); el.innerHTML = "";
+  P.deck.forEach((i, k) => { const b = document.createElement("button"); b.style.setProperty("--c", i.color); b.className = k === curInst ? "on" : ""; b.innerHTML = `<b></b>${i.name}`; b.onclick = () => { curInst = k; renderDeck(); mountController(); }; el.appendChild(b); });
+  const add = document.createElement("button"); add.textContent = "+ Add"; add.onclick = () => openInstSheet(-1); el.appendChild(add);
+}
+function renderTop() {
+  const songBars = P.song.reduce((a, s) => a + G.byId(P, s.pattern).bars * s.repeat, 0);
+  $("loopName").textContent = seq.mode === "song" ? "Song · " + songBars + " bars" : pat().name + " · " + pat().bars + (pat().bars > 1 ? " bars" : " bar");
+  $("songInfo").textContent = P.song.length + " part(s), " + songBars + " bars. Arrange them in the score editor.";
+  $("keyChip").textContent = P.key + " " + G.SCALES[P.scale].label.split(" ")[0].toLowerCase();
+  $("bpmChip").textContent = P.bpm; $("bpmOut").innerHTML = P.bpm + "<small>BPM</small>";
+}
+function renderSettings() {
+  $("key").value = P.key; $("scale").value = P.scale; $("bpm").value = P.bpm; $("bpmOut2").value = P.bpm; $("swing").value = P.swing; $("swingOut").value = P.swing;
+  $("patName").value = pat().name; seg("barsSeg", "bars", pat().bars);
+  document.querySelectorAll("[data-grid]").forEach(b => b.classList.toggle("on", +b.dataset.grid === P.grid));
+  document.querySelectorAll("[data-meter]").forEach(b => b.classList.toggle("on", b.dataset.meter === P.meter));
+  const tabs = $("loopTabs"); tabs.innerHTML = "";
+  P.patterns.forEach(p => { const b = document.createElement("button"); b.textContent = p.name; b.className = p.id === pat().id ? "on" : ""; b.onclick = () => { P.current = p.id; liveBar = 0; if (seq.playing && seq.mode === "loop") seq.start(); changed(); renderAll(); }; tabs.appendChild(b); });
+  $("patDel").disabled = P.patterns.length < 2;
+}
+function seg(id, attr, value) { $(id).querySelectorAll("button").forEach(b => b.classList.toggle("on", String(b.dataset[attr]) === String(value))); }
+function renderAll() { renderTop(); renderDeck(); renderSettings(); mountController(); }
+function changed() { G.saveAutosave(P); }
+function syncSynthDeck() { SY.setDeck(P.deck.map(i => ({ id: i.id, role: i.role, sound: soundOf(i) }))); }
+function loadProject(p) { P = G.normalizeProject(p); if (!P.patterns.some(q => q.id === P.current)) P.current = P.patterns[0].id; curInst = Math.min(curInst, P.deck.length - 1); if (seq.playing) togglePlay(); syncSynthDeck(); renderAll(); changed(); }
+
+// ---------- sheets ----------
+function openSheet(id) { $("scrim").classList.add("open"); document.querySelectorAll(".sheet").forEach(s => s.classList.toggle("open", s.id === id)); }
+function closeSheets() { $("scrim").classList.remove("open"); document.querySelectorAll(".sheet").forEach(s => s.classList.remove("open")); }
+$("scrim").onclick = closeSheets; document.querySelectorAll(".sheet .close").forEach(b => b.onclick = closeSheets);
+$("openSettings").onclick = () => { renderSettings(); openSheet("sheetSettings"); };
+$("openScore").onclick = () => { renderScore(); openSheet("sheetScore"); };
+$("openSaved").onclick = () => { renderLibrary(); openSheet("sheetSaved"); };
+$("editInst").onclick = () => openInstSheet(curInst);
+
+// instrument sheet
+function openInstSheet(index) {
+  editingIndex = index;
+  const i = index >= 0 ? P.deck[index] : { name: "", sound: "kalimba", controller: "keys", octave: 0, color: COLORS[P.deck.length % COLORS.length], role: "layer" };
+  $("instSheetTitle").textContent = index >= 0 ? "Change “" + i.name + "”" : "Add an instrument";
+  $("iName").value = i.name;
+  const sel = $("iSound"); sel.innerHTML = "";
+  for (const role of ["voice", "drums", "bass", "chords", "layer"]) {
+    const grp = document.createElement("optgroup"); grp.label = G.ROLE_LABEL[role];
+    const list = role === "chords" ? G.SOUNDS.filter(s => ["epiano", "guitar", "strings", "pad", "harp", "vibes"].includes(s.id)) : G.SOUNDS.filter(s => s.role === role);
+    for (const s of list) { const o = document.createElement("option"); o.value = role === "chords" ? "chords:" + s.id : s.id; o.textContent = s.name; grp.appendChild(o); }
+    sel.appendChild(grp);
+  }
+  sel.value = i.role === "chords" ? "chords:" + i.sound : i.sound;
+  $("iRemove").style.display = index >= 0 ? "" : "none"; $("iRemove").textContent = "Remove";
+  $("iSave").textContent = index >= 0 ? "Apply" : "Put it on stage";
+  const draft = { ...i };
+  const roleOf = () => sel.value.startsWith("chords:") ? "chords" : G.SOUND_BY_ID[sel.value].role;
+  const renderCtrls = () => {
+    const role = roleOf(), list = $("iCtrls"); list.innerHTML = "";
+    const ok = G.CONTROLLERS.filter(c => c.roles.includes(role)); if (!ok.some(c => c.id === draft.controller)) draft.controller = ok[0].id;
+    for (const c of ok) { const d = document.createElement("div"); d.className = "item"; d.innerHTML = `<div class="grow"><b>${c.name}</b><div class="meta">${c.blurb}</div></div>`; const b = document.createElement("button"); b.textContent = c.id === draft.controller ? "✓ Chosen" : "Use"; b.className = c.id === draft.controller ? "on" : ""; b.onclick = () => { draft.controller = c.id; renderCtrls(); }; d.appendChild(b); list.appendChild(d); }
+    $("iRole").textContent = { voice: "Notes become the sung line of the YuE2 score (one note at a time).", bass: "Notes become the bass line of the YuE2 score.", drums: "Hits go into the drum lanes and shape the bass rhythm.", chords: "Sets the chord of the bar; chord symbols go into the score.", layer: "An extra layer you'll hear on stage and get in the standard ABC. YuE2 reads the voice, chords and bass." }[role];
+    $("iOct").style.visibility = role === "drums" || role === "chords" ? "hidden" : "visible";
+  };
+  sel.onchange = () => { if (!$("iName").value || $("iName").value === draft.autoName) { const s = G.SOUND_BY_ID[sel.value.replace("chords:", "")]; $("iName").value = draft.autoName = roleOf() === "chords" ? "Chords" : s.name.split(" (")[0]; } renderCtrls(); };
+  if (!i.name) sel.onchange();
+  renderCtrls();
+  const octs = $("iOct"); octs.querySelectorAll("button").forEach(b => { b.classList.toggle("on", +b.dataset.o === (draft.octave || 0)); b.onclick = () => { draft.octave = +b.dataset.o; octs.querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b)); }; });
+  const sw = $("iColors"); sw.innerHTML = ""; COLORS.forEach(c => { const b = document.createElement("button"); b.className = "swatch" + (c === draft.color ? " on" : ""); b.style.background = c; b.setAttribute("aria-label", "Colour"); b.onclick = () => { draft.color = c; sw.querySelectorAll(".swatch").forEach(x => x.classList.toggle("on", x === b)); }; sw.appendChild(b); });
+  $("iSave").onclick = () => {
+    const role = roleOf(), sound = sel.value.replace("chords:", "");
+    const next = { id: index >= 0 ? i.id : G.uid(), name: $("iName").value.trim() || G.SOUND_BY_ID[sound].name, sound, role, controller: draft.controller, octave: draft.octave || 0, color: draft.color, kbOct: i.kbOct || 0 };
+    if (index >= 0) P.deck[index] = next; else { P.deck.push(next); curInst = P.deck.length - 1; }
+    syncSynthDeck(); changed(); renderAll(); closeSheets();
+  };
+  $("iRemove").onclick = () => armed($("iRemove"), () => {
+    if (P.deck.length < 2) { setStatus("Keep at least one instrument on stage.", "warn"); return; }
+    const gone = P.deck.splice(index, 1)[0]; for (const p of P.patterns) delete p.layers[gone.id];
+    curInst = Math.max(0, Math.min(curInst, P.deck.length - 1)); syncSynthDeck(); changed(); renderAll(); closeSheets();
+  });
+  openSheet("sheetInst");
+}
+function armed(btn, fn) {
+  if (btn.dataset.armed) { clearTimeout(+btn.dataset.armed); delete btn.dataset.armed; btn.textContent = btn.dataset.label; btn.classList.remove("arm"); fn(); return; }
+  btn.dataset.label = btn.textContent; btn.textContent = "Tap again"; btn.classList.add("arm");
+  btn.dataset.armed = setTimeout(() => { delete btn.dataset.armed; btn.textContent = btn.dataset.label; btn.classList.remove("arm"); }, 3000);
+}
+
+// settings sheet
+$("key").onchange = () => { P.key = $("key").value; changed(); renderAll(); };
+$("scale").onchange = () => { const oldN = G.scaleDef(P).steps.length; P.scale = $("scale").value; const n = G.scaleDef(P).steps.length; if (n !== oldN) for (const p of P.patterns) p.melody.forEach(x => { x.row = G.clamp(Math.round(x.row * n / oldN), 0, 2 * n); }); changed(); renderAll(); };
+$("bpm").oninput = () => { P.bpm = +$("bpm").value; $("bpmOut2").value = P.bpm; seq.retime(); changed(); renderTop(); };
+$("swing").oninput = () => { P.swing = +$("swing").value; $("swingOut").value = P.swing; changed(); };
+$("vol").oninput = () => SY.setVolume(+$("vol").value / 100);
+$("hearChords").onchange = () => { hearChords = $("hearChords").checked; }; $("hearBass").onchange = () => { hearBass = $("hearBass").checked; };
+$("patName").oninput = () => { pat().name = $("patName").value || "Loop"; changed(); renderTop(); renderSettings(); };
+$("barsSeg").onclick = e => { const b = e.target.closest("button"); if (!b) return; G.setBars(P, pat(), +b.dataset.bars); liveBar = 0; if (seq.playing) seq.start(); changed(); renderAll(); };
+document.querySelectorAll("[data-grid]").forEach(b => b.onclick = () => { const g = +b.dataset.grid; if (g === P.grid) return; const old = G.spb(P); const ratio = g / P.grid; P.grid = g; G.remapSteps(P, old, G.spb(P), ratio); if (seq.playing) seq.start(); changed(); renderAll(); });
+document.querySelectorAll("[data-meter]").forEach(b => b.onclick = () => { if (b.dataset.meter === P.meter) return; const old = G.spb(P); P.meter = b.dataset.meter; G.remapSteps(P, old, G.spb(P), 1); if (seq.playing) seq.start(); changed(); renderAll(); });
+$("patNew").onclick = () => { const p = G.newPattern("Loop " + (P.patterns.length + 1), pat().bars); P.patterns.push(p); P.current = p.id; P.song.push({ pattern: p.id, repeat: 2, section: "verse" }); changed(); renderAll(); };
+$("patDup").onclick = () => { const c = G.clone(pat()); c.id = G.uid(); c.name = pat().name + " copy"; P.patterns.splice(P.patterns.indexOf(pat()) + 1, 0, c); P.current = c.id; changed(); renderAll(); };
+$("patClear").onclick = () => armed($("patClear"), () => { const p = pat(); for (let b = 0; b < p.bars; b++) G.clearBar(P, p, b, "all"); changed(); renderAll(); setStatus("Loop cleared.", ""); });
+$("patDel").onclick = () => armed($("patDel"), () => { if (P.patterns.length < 2) return; const id = pat().id; P.patterns = P.patterns.filter(p => p.id !== id); P.song = P.song.filter(s => s.pattern !== id); P.current = P.patterns[0].id; loadProject(P); setStatus("Loop deleted.", ""); });
+$("loadDemo").onclick = () => armed($("loadDemo"), () => { loadProject(G.demoProject()); closeSheets(); setStatus("Demo groove loaded.", "ok"); });
+$("newGroove").onclick = () => armed($("newGroove"), () => { loadProject(G.blankProject()); closeSheets(); setStatus("Empty groove. Press ● and play something.", "ok"); });
+
+// score sheet
+function renderScore() {
+  const abc = G.exportAbc(P, $("flavour").value), r = G.checkAbc(P, abc);
+  $("abcOut").value = abc;
+  $("check").textContent = r.issues.length ? r.issues.length + " issue(s): " + r.issues.slice(0, 2).join(" ") : r.bars + " bars · bar lengths OK";
+  $("check").className = r.issues.length ? "err" : "ok";
+}
+$("flavour").onchange = renderScore;
+$("copyAbc").onclick = async () => { try { await navigator.clipboard.writeText($("abcOut").value); setStatus("ABC copied.", "ok"); } catch (e) { $("abcOut").select(); setStatus("Select-all and copy from the text box (clipboard blocked).", "warn"); } };
+$("dlAbc").onclick = () => G.download(new Blob([$("abcOut").value], { type: "text/plain" }), G.safeName(P.title) + ".abc");
+$("dlPng").onclick = () => { if (!window.pako) { setStatus("The PNG packer didn't load (offline?). Download the .abc instead.", "err"); return; } const bytes = new TextEncoder().encode(JSON.stringify(G.scorePackage(P, G.exportYuE2(P, true)), null, 1)); G.download(G.encodeM3DS(bytes, "song.yue2.json"), G.safeName(P.title) + "-score.png"); setStatus("Score PNG downloaded. Send it to /wf /run:score-yue2 as a file.", "ok"); };
+$("openStudio").onclick = () => { try { sessionStorage.setItem(G.HANDOFF, JSON.stringify(G.scorePackage(P, G.exportYuE2(P, $("flavour").value !== "yue2melody")))); location.href = "index.html"; } catch (e) { setStatus("Couldn't hand over (storage blocked). Download the .abc and drop it on the Score Studio.", "err"); } };
+
+// saved sheet
+function renderLibrary() {
+  const el = $("lib"); el.innerHTML = ""; const items = G.library();
+  if (!items.length) { el.innerHTML = `<div class="muted">Nothing saved yet. Your current groove is kept automatically; Save keeps a named copy.</div>`; return; }
+  for (const item of items) {
+    const d = document.createElement("div"); d.className = "item";
+    d.innerHTML = `<div class="grow"><b>${item.name.replace(/</g, "&lt;")}</b><div class="meta">${new Date(item.saved).toLocaleString()} · ${item.project.patterns.length} loop(s) · ${item.project.bpm} BPM</div></div>`;
+    const load = document.createElement("button"); load.textContent = "Load"; load.onclick = () => { loadProject(item.project); closeSheets(); setStatus("Loaded “" + item.name + "”.", "ok"); };
+    const del = document.createElement("button"); del.textContent = "✕"; del.setAttribute("aria-label", "Delete"); del.onclick = () => armed(del, () => { G.setLibrary(G.library().filter(x => x.id !== item.id)); renderLibrary(); });
+    d.append(load, del); el.appendChild(d);
+  }
+}
+$("saveLib").onclick = () => { const name = $("saveName").value.trim() || P.name || "Groove"; P.name = name; if (G.saveToLibrary(P, name)) { renderLibrary(); setStatus("Saved “" + name + "”.", "ok"); } else setStatus("Couldn't save: storage is blocked here. Use Export file.", "err"); };
+$("exportJson").onclick = () => G.download(new Blob([JSON.stringify(P, null, 1)], { type: "application/json" }), G.safeName(P.name) + ".groove.json");
+$("importJson").onclick = () => $("importFile").click();
+$("importFile").onchange = async e => { const f = e.target.files[0]; if (!f) return; try { const p = JSON.parse(await f.text()); if (!p.patterns) throw new Error("not a Groove Box file"); loadProject(p); closeSheets(); setStatus("Loaded " + f.name + ".", "ok"); } catch (err) { setStatus("Couldn't load " + f.name + ": " + err.message, "err"); } e.target.value = ""; };
+
+// transport
+$("play").onclick = togglePlay;
+$("rec").onclick = () => { setRec(!recArmed); if (recArmed && !seq.playing) togglePlay(); };
+$("modeLoop").onclick = () => { seq.setMode("loop"); $("modeLoop").classList.add("on"); $("modeSong").classList.remove("on"); renderTop(); };
+$("modeSong").onclick = () => { seq.setMode("song"); $("modeSong").classList.add("on"); $("modeLoop").classList.remove("on"); renderTop(); };
+const nudge = d => { P.bpm = G.clamp(P.bpm + d, 60, 180); seq.retime(); changed(); renderTop(); };
+$("bpmDown").onclick = () => nudge(-2); $("bpmUp").onclick = () => nudge(2);
+$("octSeg").onclick = e => { const b = e.target.closest("button"); if (!b) return; const i = inst(); if (["keys", "strings"].includes(i.controller)) i.kbOct = G.clamp((i.kbOct || 0) + +b.dataset.d, 0, 1); else i.octave = G.clamp(i.octave + +b.dataset.d, -2, 2); changed(); mountController(); };
+document.addEventListener("keydown", e => { if (e.code === "Space" && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || "")) { e.preventDefault(); togglePlay(); } });
+document.addEventListener("pointerdown", () => SY.ensure(), { passive: true });
+
+// ---------- boot ----------
+G.KEYS.forEach(k => { const o = document.createElement("option"); o.value = o.textContent = k; $("key").appendChild(o); });
+Object.entries(G.SCALES).forEach(([id, s]) => { const o = document.createElement("option"); o.value = id; o.textContent = s.label; $("scale").appendChild(o); });
+const saved = G.loadAutosave();
+loadProject(saved || G.demoProject());
+setStatus(saved ? "Picked up where you left off." : "Tap the keys. Press ▶ for the demo groove, ● to play yourself into it.", "");
+SY.load((msg, frac) => { $("engineText").textContent = msg; $("engineBar").style.width = Math.round(frac * 100) + "%"; }).then(engine => {
+  $("engineText").textContent = engine === "fluid" ? "FluidSynth · General MIDI instruments" : "Sketch sounds (FluidSynth didn't load)";
+  setTimeout(() => { $("engineBar").parentElement.style.display = "none"; }, 800);
+});
+window.Stage = { project: () => P, loadProject, api, seq, mountController, get controller() { return controller; }, setRec, togglePlay };
+</script>
+</body>
+</html>

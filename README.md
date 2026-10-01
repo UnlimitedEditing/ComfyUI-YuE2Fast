@@ -26,15 +26,26 @@ Score PNGs must travel as **files** — chat apps recompress photos, and the CRC
 
 ## Groove Box
 
-[`docs/groovebox.html`](docs/groovebox.html) (served from the same GitHub Pages site as the Score Studio) is a
-touch-friendly way to *make* a score without typing ABC: a step grid and live pads for drums, a scale grid and
-keys for a monophonic melody, one chord pad per bar, and a song list that stacks the loops into named sections.
-Everything is exported live as ABC in YuE2's own dialect (`% section`, `V: Vocal`, `V: Ins`): the melody becomes
-the vocal line, chord symbols sit on the vocal line, and the bass line is derived from the kick and snare over
-the chosen chord. Three flavours: melody + chords (planning `full`), melody only (planning `melody`), and standard
-multi-voice ABC with a percussion staff for other tools. Grooves autosave in the browser, can be kept in a named
-library or exported as JSON, and the score can be downloaded as `.abc` or as a score PNG, or handed straight to
-the Score Studio for lyrics and style. Playback is a Web Audio sketch, not YuE2.
+A way to *make* a score without typing ABC, served from the same GitHub Pages site as the Score Studio:
+
+- [`docs/stage.html`](docs/stage.html) — the **stage**: a one-screen, touch-first deck of virtual instruments. Each
+  instrument pairs a sound (General MIDI presets played by FluidSynth) with a controller — big scale keys, a 4×4 pad
+  bank, a drawn drum kit, strings to strum, a slide pad, drifting note bubbles, or chord pads — and a role that decides
+  where its notes land: the sung line, the bass line, the drums, the bar's chord, or an extra layer. Press ● and play
+  along with the loop; everything snaps to the grid. Assemble your own deck from the "+ Add" chip.
+- [`docs/groovebox.html`](docs/groovebox.html) — the **score editor** behind it: step grids for drums and the sung
+  line, chord pads per bar, a song list that stacks loops into named sections, live notation, and the exports.
+
+Both pages share one project (autosaved in the browser, with a named library and JSON import/export) and the same
+exporter (`docs/groove-core.js`): ABC in YuE2's own dialect (`% section`, `V: Vocal`, `V: Ins`) with the melody as
+the vocal line, chord symbols on it, and the bass line taken from what was played on a bass instrument or derived from
+the kick and snare over the bar's chord. Flavours: melody + chords (planning `full`), melody only (planning `melody`),
+and standard multi-voice ABC with every instrument and a percussion staff. Scores download as `.abc` or as a score PNG,
+or open straight in the Score Studio for lyrics and style.
+
+Sound: `docs/groove-synth.js` runs FluidSynth compiled to WebAssembly ([js-synthesizer](https://github.com/jet2jet/js-synthesizer),
+`docs/vendor/`) with `groovebox-gm.sf3`, a 3 MB subset of MuseScore's FluidR3Mono_GM SoundFont holding the stage's
+presets (built with spessasynth_core). A small oscillator engine covers the first seconds while that loads, or when it can't.
 
 ## Why
 

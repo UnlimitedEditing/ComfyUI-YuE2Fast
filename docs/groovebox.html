@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>YuE2 Groove Box</title>
-<meta name="description" content="Tap out drums, melodies and chords on touch pads, stack the loops into a song, and export it as ABC notation for a YuE2 render.">
+<title>Groove Box Score Editor</title>
+<meta name="description" content="The grid behind the Groove Box stage: edit drums, melody, chords and the song's sections step by step, and export ABC notation for YuE2.">
 <style>
   :root {
     --bg: #f6f5f1; --panel: #ffffff; --ink: #1d1f23; --muted: #6b6f78; --line: #e2e0da;
@@ -16,13 +16,13 @@
     :root:not([data-theme="light"]) {
       --bg: #15171b; --panel: #1d2026; --ink: #e8e9ec; --muted: #9aa0ab; --line: #2e323a;
       --accent: #7d95ff; --accent-ink: #0e1016; --warn: #e39a5c; --ok: #6fcf97; --err: #ff8a80; --chip: #262b3a;
-      --cell: #2a2e37; --cell-beat: #333845; --rec: #ff6b6b;
+      --cell: #2a2e37; --cell-beat: #333845; --rec: #ff6b6b; color-scheme: dark;
     }
   }
   :root[data-theme="dark"] {
     --bg: #15171b; --panel: #1d2026; --ink: #e8e9ec; --muted: #9aa0ab; --line: #2e323a;
     --accent: #7d95ff; --accent-ink: #0e1016; --warn: #e39a5c; --ok: #6fcf97; --err: #ff8a80; --chip: #262b3a;
-    --cell: #2a2e37; --cell-beat: #333845; --rec: #ff6b6b;
+    --cell: #2a2e37; --cell-beat: #333845; --rec: #ff6b6b; color-scheme: dark;
   }
   * { box-sizing: border-box; }
   html { -webkit-text-size-adjust: 100%; }
@@ -32,10 +32,12 @@
   header p { margin: 0; color: var(--muted); }
   main { max-width: 1200px; margin: 0 auto; padding: 8px 16px 48px; display: grid; gap: 16px; }
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; min-width: 0; }
-  .panel h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 12px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-  .panel h2 .hint { text-transform: none; letter-spacing: 0; font-weight: normal; }
-  .grid2 { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  @media (max-width: 900px) { .grid2 { grid-template-columns: minmax(0, 1fr); } }
+  details.panel { padding: 0; }
+  details.panel > summary { padding: 14px 16px; cursor: pointer; list-style: none; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 14px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  details.panel > summary::-webkit-details-marker { display: none; }
+  details.panel > summary::before { content: "▸"; font-size: 12px; } details[open].panel > summary::before { content: "▾"; }
+  details.panel > .inner { padding: 0 16px 16px; }
+  .hint { text-transform: none; letter-spacing: 0; font-weight: normal; }
   button, select, input, textarea { font: inherit; color: inherit; }
   button { background: var(--chip); border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; cursor: pointer; min-height: 38px; user-select: none; -webkit-user-select: none; }
   button:hover { border-color: var(--accent); }
@@ -59,8 +61,6 @@
   .tbig { min-width: 92px; font-weight: 600; font-size: 16px; }
   .status { font-size: 14px; min-height: 1.5em; color: var(--muted); }
   .status.ok { color: var(--ok); } .status.err { color: var(--err); } .status.warn { color: var(--warn); }
-
-  /* step grids */
   .scroller { overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px; }
   .steps { display: grid; grid-template-columns: 68px repeat(var(--n), minmax(30px, 1fr)); gap: 3px; min-width: calc(68px + var(--n) * 33px); align-items: center; }
   .steps .lab { font-size: 12px; color: var(--muted); padding-right: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: none; }
@@ -73,30 +73,26 @@
   .mel .cell { height: 26px; }
   .cell.on { background: var(--lane, var(--accent)); box-shadow: inset 0 0 0 1px rgba(0,0,0,.12); }
   .cell.tail { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: -3px; padding-left: 3px; }
-  .cell.head.cont { border-top-right-radius: 0; border-bottom-right-radius: 0; }
-  .cell.tail.cont { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+  .cell.head.cont, .cell.tail.cont { border-top-right-radius: 0; border-bottom-right-radius: 0; }
   .cell.now { outline: 2px solid var(--ink); outline-offset: -1px; }
   .cell.tonic { background-image: linear-gradient(90deg, rgba(58,91,217,.14), rgba(58,91,217,.14)); }
+  .cell.layer::after { content: ""; position: absolute; inset: 35% 30%; border-radius: 50%; background: var(--muted); opacity: .5; }
   .mel .lab.tonic { color: var(--ink); font-weight: 600; }
-
-  /* pads & keys */
-  .pads { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+  .pads { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
   @media (max-width: 560px) { .pads { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-  .pad { min-height: 64px; border-radius: 14px; border: 2px solid var(--lane); background: var(--chip); background: color-mix(in srgb, var(--lane) 18%, var(--panel)); font-weight: 600; touch-action: none; transition: transform .05s; }
+  .pad { min-height: 56px; border-radius: 14px; border: 2px solid var(--lane); background: var(--chip); background: color-mix(in srgb, var(--lane) 18%, var(--panel)); font-weight: 600; touch-action: none; transition: transform .05s; font-size: 14px; }
   .pad.hit, .key.hit { transform: scale(.94); background: var(--lane, var(--accent)); color: #fff; }
   .keys { display: grid; grid-template-columns: repeat(var(--k), minmax(0, 1fr)); gap: 6px; margin-top: 12px; }
   .key { min-height: 72px; border-radius: 12px; border: 1px solid var(--line); background: var(--chip); font-weight: 600; touch-action: none; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 8px; gap: 2px; }
   .key small { font-weight: normal; color: var(--muted); font-size: 11px; }
   .key.tonic { border-color: var(--accent); }
   .chords { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; margin-top: 8px; }
-  .chord { min-height: 56px; border-radius: 12px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 0; line-height: 1.2; touch-action: none; }
+  .chord { min-height: 56px; border-radius: 12px; display: flex; flex-direction: column; justify-content: center; align-items: center; line-height: 1.2; touch-action: none; }
   .chord small { color: var(--muted); font-size: 11px; }
   .chord.on small { color: inherit; opacity: .8; }
   .barnav { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
   .tabs { display: flex; gap: 6px; flex-wrap: wrap; }
   .tabs button.on { font-weight: 600; }
-
-  /* song list */
   .parts { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
   .parts li { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
   .parts li.now { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
@@ -105,7 +101,6 @@
   .parts .bars { color: var(--muted); font-size: 13px; }
   .parts .tools { margin-left: auto; display: flex; gap: 4px; }
   .parts .tools button { padding: 4px 8px; min-height: 32px; font-size: 13px; }
-
   #abcOut { font-family: var(--mono); font-size: 13px; min-height: 240px; white-space: pre; overflow-wrap: normal; overflow-x: auto; }
   #notation { overflow-x: auto; background: #fff; border-radius: 8px; padding: 8px; min-height: 60px; }
   #notation svg { max-width: 100%; }
@@ -114,7 +109,6 @@
   .lib li .name { font-weight: 600; } .lib li .meta { color: var(--muted); font-size: 13px; }
   .lib li .tools { margin-left: auto; display: flex; gap: 4px; }
   .lib li .tools button { padding: 4px 8px; min-height: 32px; font-size: 13px; }
-  .hidden { display: none !important; }
   footer { max-width: 1200px; margin: 0 auto; padding: 0 16px 32px; color: var(--muted); font-size: 13px; }
   a { color: var(--accent); }
   code { font-family: var(--mono); font-size: .92em; background: var(--chip); padding: 1px 5px; border-radius: 4px; }
@@ -123,12 +117,13 @@
 </head>
 <body>
 <header>
-  <h1>YuE2 Groove Box</h1>
-  <p>Tap out a beat, a melody and some chords. Stack the loops into a song. Take the score to YuE2 as ABC — no typing, no code.</p>
+  <h1>Groove Box · Score editor</h1>
+  <p>The grid behind the <a href="stage.html">stage</a>. Edit every step of the drums, the sung line and the chords, arrange the sections, and take the score to YuE2.</p>
 </header>
 <main>
   <div class="transport">
     <div class="panel row">
+      <a href="stage.html" style="text-decoration:none"><button type="button">← Stage</button></a>
       <button id="play" class="primary tbig" aria-label="Play">▶ Play</button>
       <button id="rec" class="rec tbig" aria-pressed="false" title="Record pad and key taps into the loop while it plays">● Rec</button>
       <span class="seg" role="group" aria-label="What plays">
@@ -143,7 +138,7 @@
   </div>
 
   <section class="panel">
-    <h2>Loops <span class="hint">· a loop is 1, 2 or 4 bars of drums + melody + chords</span></h2>
+    <h2 style="font-size:14px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:0 0 12px">Loops <span class="hint">· a loop is 1, 2 or 4 bars of drums + melody + chords</span></h2>
     <div class="row" style="margin-bottom:10px">
       <div id="patTabs" class="tabs"></div>
       <button id="patNew" title="New empty loop">+ New</button>
@@ -163,508 +158,133 @@
     </div>
   </section>
 
-  <section class="panel drums">
-    <h2>Drums <span class="hint">· tap a cell to place a hit, or play the pads live with Rec on</span> <button id="clearDrums" style="margin-left:auto; min-height:30px; padding:3px 10px; font-size:13px">Clear bar</button></h2>
-    <div class="scroller"><div id="drumGrid" class="steps"></div></div>
-    <div id="pads" class="pads"></div>
-  </section>
-
-  <section class="panel mel">
-    <h2>Melody <span class="hint">· one note at a time (it becomes the vocal line)</span> <button id="clearMel" style="margin-left:auto; min-height:30px; padding:3px 10px; font-size:13px">Clear bar</button></h2>
-    <div class="row" style="margin-bottom:10px">
-      <label class="inl">Key <select id="key"></select></label>
-      <label class="inl">Scale <select id="scale"></select></label>
-      <label class="inl">Octave <span class="seg" id="octSeg"><button data-oct="-1">−1</button><button data-oct="0">0</button><button data-oct="1">+1</button></span></label>
-      <label class="inl">Note length <span class="seg" id="lenSeg"></span></label>
-      <label class="inl">Sound <select id="timbre"><option value="keys">Keys</option><option value="pluck">Pluck</option><option value="lead">Lead</option><option value="flute">Flute</option></select></label>
+  <details class="panel drums" open>
+    <summary>Drums <span class="hint">· tap a cell to place a hit, or play the pads live with Rec on</span></summary>
+    <div class="inner">
+      <div class="row" style="margin-bottom:8px"><button id="clearDrums" style="min-height:30px; padding:3px 10px; font-size:13px">Clear bar</button></div>
+      <div class="scroller"><div id="drumGrid" class="steps"></div></div>
+      <div id="pads" class="pads"></div>
     </div>
-    <div class="scroller"><div id="melGrid" class="steps"></div></div>
-    <div class="row" style="margin-top:12px">
-      <span class="muted">Play keys live:</span>
-      <span class="seg" id="kbOctSeg"><button data-kb="0">low octave</button><button data-kb="1">high octave</button></span>
-    </div>
-    <div id="keys" class="keys"></div>
-  </section>
+  </details>
 
-  <section class="panel">
-    <h2>Chords <span class="hint">· one chord per bar; the bass follows the kick and snare</span> <label class="inl" style="margin-left:auto"><input id="hearChords" type="checkbox" checked style="width:auto"> hear chords</label> <label class="inl"><input id="hearBass" type="checkbox" checked style="width:auto"> hear bass</label></h2>
-    <div id="chordBars" class="row" style="gap:12px"></div>
-  </section>
-
-  <section class="panel">
-    <h2>Song <span class="hint">· stack loops into sections; YuE2 reads the section names</span></h2>
-    <ul id="parts" class="parts"></ul>
-    <div class="row" style="margin-top:10px"><button id="partAdd">+ Add part</button><span id="songLen" class="muted"></span></div>
-  </section>
-
-  <section class="panel">
-    <h2>Score (ABC) <span class="hint">· regenerated as you play</span></h2>
-    <div class="row" style="margin-bottom:10px">
-      <label class="inl">Flavour <select id="flavour">
-        <option value="yue2">YuE2 score — melody + chords (planning: full)</option>
-        <option value="yue2melody">YuE2 score — melody only (planning: melody)</option>
-        <option value="standard">Standard ABC — melody, bass and drum staff</option>
-      </select></label>
-      <input id="title" type="text" aria-label="Title" placeholder="Title" style="width:180px">
+  <details class="panel mel" open>
+    <summary>Melody <span class="hint">· the sung line, one note at a time</span></summary>
+    <div class="inner">
+      <div class="row" style="margin-bottom:10px">
+        <label class="inl">Key <select id="key"></select></label>
+        <label class="inl">Scale <select id="scale"></select></label>
+        <label class="inl">Octave <span class="seg" id="octSeg"><button data-oct="-1">−1</button><button data-oct="0">0</button><button data-oct="1">+1</button></span></label>
+        <label class="inl">Note length <span class="seg" id="lenSeg"></span></label>
+        <button id="clearMel" style="min-height:30px; padding:3px 10px; font-size:13px">Clear bar</button>
+      </div>
+      <div class="scroller"><div id="melGrid" class="steps"></div></div>
+      <p class="muted" id="layerNote" style="margin:8px 0 0"></p>
+      <div class="row" style="margin-top:12px">
+        <span class="muted">Play keys live:</span>
+        <span class="seg" id="kbOctSeg"><button data-kb="0">low octave</button><button data-kb="1">high octave</button></span>
+      </div>
+      <div id="keys" class="keys"></div>
     </div>
-    <div id="notation"></div>
-    <div id="check" class="status" style="margin:8px 0"></div>
-    <textarea id="abcOut" readonly spellcheck="false" aria-label="ABC notation"></textarea>
-    <div class="row" style="margin-top:12px">
-      <button id="copyAbc" class="primary">Copy ABC</button>
-      <button id="dlAbc">Download .abc</button>
-      <button id="dlPng">Download score PNG</button>
-      <button id="openStudio">Open in Score Studio →</button>
-    </div>
-    <p class="muted" style="margin:8px 0 0">Paste the ABC into the chat as the <code>abc_text</code> of a YuE2 render, or send the score PNG to <code>/wf /run:score-yue2</code> as a file. The Score Studio adds lyrics and style, and plays a piano sketch.</p>
-  </section>
+  </details>
 
-  <section class="panel">
-    <h2>Saved grooves <span class="hint">· kept in this browser; export a file to move them</span></h2>
-    <div class="row">
-      <input id="saveName" type="text" placeholder="Name this groove" style="width:200px">
-      <button id="saveLib" class="primary">Save</button>
-      <button id="exportJson">Export file</button>
-      <button id="importJson">Import file</button>
-      <button id="resetDemo">Load demo</button>
-      <input id="importFile" type="file" accept=".json,application/json" hidden>
+  <details class="panel" open>
+    <summary>Chords <span class="hint">· one chord per bar; the bass follows what you played, or the kick and snare</span></summary>
+    <div class="inner">
+      <div class="row" style="margin-bottom:6px"><label class="inl"><input id="hearChords" type="checkbox" checked style="width:auto"> hear chords</label> <label class="inl"><input id="hearBass" type="checkbox" checked style="width:auto"> hear bass</label></div>
+      <div id="chordBars" class="row" style="gap:12px"></div>
     </div>
-    <ul id="lib" class="lib" style="margin-top:10px"></ul>
-  </section>
+  </details>
+
+  <details class="panel" open>
+    <summary>Song <span class="hint">· stack loops into sections; YuE2 reads the section names</span></summary>
+    <div class="inner">
+      <ul id="parts" class="parts"></ul>
+      <div class="row" style="margin-top:10px"><button id="partAdd">+ Add part</button><span id="songLen" class="muted"></span></div>
+    </div>
+  </details>
+
+  <details class="panel" open>
+    <summary>Score (ABC) <span class="hint">· regenerated as you play</span></summary>
+    <div class="inner">
+      <div class="row" style="margin-bottom:10px">
+        <label class="inl">Flavour <select id="flavour">
+          <option value="yue2">YuE2 score — melody + chords (planning: full)</option>
+          <option value="yue2melody">YuE2 score — melody only (planning: melody)</option>
+          <option value="standard">Standard ABC — every instrument, with a drum staff</option>
+        </select></label>
+        <input id="title" type="text" aria-label="Title" placeholder="Title" style="width:180px">
+      </div>
+      <div id="notation"></div>
+      <div id="check" class="status" style="margin:8px 0"></div>
+      <textarea id="abcOut" readonly spellcheck="false" aria-label="ABC notation"></textarea>
+      <div class="row" style="margin-top:12px">
+        <button id="copyAbc" class="primary">Copy ABC</button>
+        <button id="dlAbc">Download .abc</button>
+        <button id="dlPng">Download score PNG</button>
+        <button id="openStudio">Open in Score Studio →</button>
+      </div>
+      <p class="muted" style="margin:8px 0 0">Paste the ABC into the chat as the <code>abc_text</code> of a YuE2 render, or send the score PNG to <code>/wf /run:score-yue2</code> as a file. The Score Studio adds lyrics and style, and plays a piano sketch.</p>
+    </div>
+  </details>
+
+  <details class="panel">
+    <summary>Saved grooves <span class="hint">· kept in this browser; export a file to move them</span></summary>
+    <div class="inner">
+      <div class="row">
+        <input id="saveName" type="text" placeholder="Name this groove" style="width:200px">
+        <button id="saveLib" class="primary">Save</button>
+        <button id="exportJson">Export file</button>
+        <button id="importJson">Import file</button>
+        <button id="resetDemo">Load demo</button>
+        <input id="importFile" type="file" accept=".json,application/json" hidden>
+      </div>
+      <ul id="lib" class="lib" style="margin-top:10px"></ul>
+    </div>
+  </details>
 </main>
 <footer>
-  Part of <a href="https://github.com/UnlimitedEditing/ComfyUI-YuE2Fast">ComfyUI-YuE2Fast</a>. Sounds are a browser sketch, not YuE2 — the render performs your score with the style you give it. <a href="index.html">Score Studio</a>.
+  Part of <a href="https://github.com/UnlimitedEditing/ComfyUI-YuE2Fast">ComfyUI-YuE2Fast</a>. Sounds: FluidSynth with a General MIDI SoundFont — a sketch, not YuE2. <a href="stage.html">Stage</a> · <a href="index.html">Score Studio</a>.
 </footer>
 
 <script src="https://cdn.jsdelivr.net/npm/pako@1.0.11/dist/pako.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/abcjs@6.4.4/dist/abcjs-basic-min.js"></script>
+<script src="groove-core.js"></script>
+<script src="groove-synth.js"></script>
 <script>
 "use strict";
-const $ = id => document.getElementById(id);
-const uid = () => Math.random().toString(36).slice(2, 9);
-const clone = o => JSON.parse(JSON.stringify(o));
-const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
-
-// ---------- music tables ----------
-const LETTERS = "CDEFGAB", NATURAL = [0, 2, 4, 5, 7, 9, 11];
-const KEYS = ["C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
-const MINOR_KEYS = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "G#", "A", "Bb", "B"];
-const FIFTHS = { C: 0, G: 1, D: 2, A: 3, E: 4, B: 5, "F#": 6, "C#": 7, F: -1, Bb: -2, Eb: -3, Ab: -4, Db: -5, Gb: -6, Cb: -7 };
-const SHARP_ORDER = "FCGDAEB", FLAT_ORDER = "BEADGCF";
-const ACC_TEXT = { 2: "^^", 1: "^", 0: "=", "-1": "_", "-2": "__" };
-const SCALES = {
-  major:      { label: "Major (happy)",        steps: [0, 2, 4, 5, 7, 9, 11], minor: false },
-  minor:      { label: "Minor (moody)",        steps: [0, 2, 3, 5, 7, 8, 10], minor: true },
-  pentatonic: { label: "Pentatonic (can't miss)", steps: [0, 2, 4, 7, 9], minor: false, parent: "major" },
-  minorpent:  { label: "Minor pentatonic",     steps: [0, 3, 5, 7, 10], minor: true, parent: "minor" },
-  blues:      { label: "Blues",                steps: [0, 3, 5, 6, 7, 10], minor: true, parent: "minor" },
-  dorian:     { label: "Dorian (afro-funk)",   steps: [0, 2, 3, 5, 7, 9, 10], minor: true },
-  mixolydian: { label: "Mixolydian (highlife)", steps: [0, 2, 4, 5, 7, 9, 10], minor: false },
-};
-const DRUMS = [
-  { id: "kick",  label: "Kick",     color: "#d9534f", gm: 36, perc: "F" },
-  { id: "snare", label: "Snare",    color: "#e3842a", gm: 38, perc: "c" },
-  { id: "clap",  label: "Clap",     color: "#c9a227", gm: 39, perc: "e", head: "triangle" },
-  { id: "hat",   label: "Hi-hat",   color: "#2a9d8f", gm: 42, perc: "g", head: "x" },
-  { id: "ohat",  label: "Open hat", color: "#3a86c8", gm: 46, perc: "a", head: "x" },
-  { id: "tom",   label: "Tom",      color: "#8e5bd9", gm: 45, perc: "A" },
-];
-const SECTION_TYPES = ["intro", "verse", "prechorus", "chorus", "postchorus", "bridge", "interlude", "solo", "breakdown", "outro"];
+const G = window.Groove, SY = window.GrooveSynth, $ = id => document.getElementById(id);
 const NOTE_LENS = [[1, "♬ 1"], [2, "♪ 2"], [4, "♩ 4"], [8, "𝅗𝅥 8"]];
-
-// ---------- project model ----------
-// pattern.drums[lane] = absolute step indexes within the pattern (bar * stepsPerBar + step)
-// pattern.melody = [{step, len, row}] (row = scale degree index, 0 = low tonic), monophonic
-// pattern.chords[bar] = degree 0..6 of the parent scale, or -1 for none
-function newPattern(name, bars = 1) {
-  return { id: uid(), name, bars, drums: Object.fromEntries(DRUMS.map(d => [d.id, []])), melody: [], chords: Array(bars).fill(-1) };
-}
-function demoProject() {
-  const a = newPattern("Groove A", 4);
-  const spb = 16;
-  const bar = (b, steps) => steps.map(s => b * spb + s);
-  a.drums.kick = [].concat(...[0, 1, 2, 3].map(b => bar(b, [0, 6, 10])));
-  a.drums.clap = [].concat(...[0, 1, 2, 3].map(b => bar(b, [4, 12])));
-  a.drums.hat = [].concat(...[0, 1, 2, 3].map(b => bar(b, [0, 2, 4, 6, 8, 10, 12])));
-  a.drums.ohat = [].concat(...[0, 1, 2, 3].map(b => bar(b, [14])));
-  a.drums.tom = bar(3, [13, 15]);
-  a.chords = [0, 5, 3, 4];
-  a.melody = [
-    { step: 0, row: 2, len: 2 }, { step: 2, row: 4, len: 2 }, { step: 4, row: 2, len: 4 }, { step: 10, row: 0, len: 4 },
-    { step: 16, row: 2, len: 2 }, { step: 18, row: 4, len: 2 }, { step: 20, row: 5, len: 4 }, { step: 26, row: 4, len: 2 }, { step: 28, row: 2, len: 2 },
-    { step: 32, row: 3, len: 2 }, { step: 34, row: 2, len: 2 }, { step: 36, row: 0, len: 4 }, { step: 42, row: 1, len: 4 },
-    { step: 48, row: 1, len: 2 }, { step: 50, row: 2, len: 2 }, { step: 52, row: 3, len: 4 }, { step: 58, row: 2, len: 6 },
-  ];
-  const b = clone(a); b.id = uid(); b.name = "Groove B"; b.chords = [5, 3, 0, 4];
-  b.drums.snare = [].concat(...[0, 1, 2, 3].map(x => bar(x, [4, 12]))); b.drums.clap = [].concat(...[0, 1, 2, 3].map(x => bar(x, [12])));
-  b.melody = b.melody.map(n => ({ ...n, row: Math.min(14, n.row + 2) }));
-  return { version: 1, name: "Demo groove", title: "Groove Box sketch", bpm: 104, swing: 20, meter: "4/4", grid: 16, key: "C", scale: "major",
-           octave: 0, timbre: "keys", patterns: [a, b], song: [{ pattern: a.id, repeat: 1, section: "intro" }, { pattern: a.id, repeat: 2, section: "verse" }, { pattern: b.id, repeat: 2, section: "chorus" }] };
-}
-function blankProject() {
-  const a = newPattern("Loop 1", 1);
-  return { ...demoProject(), name: "New groove", title: "Groove Box sketch", patterns: [a], song: [{ pattern: a.id, repeat: 2, section: "verse" }] };
-}
-
-let P = null;          // project
-let cur = 0;           // current pattern index
-let viewBar = 0;       // bar shown in the grids
-let noteLen = 2;       // steps per tapped melody note
-let kbOct = 1;         // keyboard octave shown (0 low, 1 high)
-let playMode = "loop";
-
-const beats = () => +P.meter.split("/")[0];
-const spb = () => beats() * P.grid / 4;        // steps per bar
-const pat = () => P.patterns[cur];
-const byId = id => P.patterns.find(p => p.id === id) || P.patterns[0];
-const scaleDef = () => SCALES[P.scale];
-const nRows = () => scaleDef().steps.length * 2 + 1;
-const tonicPc = () => KEYS.indexOf(P.key);
-function midiOfRow(row) {
-  const s = scaleDef().steps, n = s.length, pc = tonicPc();
-  const base = (pc >= 7 ? 48 : 60) + pc + 12 * P.octave;
-  return base + 12 * Math.floor(row / n) + s[row % n];
-}
-function rowName(row) {
-  const m = midiOfRow(row), pc = ((m % 12) + 12) % 12, names = keyInfo().f < 0 ? ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"] : ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-  return names[pc] + (Math.floor(m / 12) - 1);
-}
-function keyInfo() {
-  const minor = scaleDef().minor, pc = tonicPc();
-  const tonic = minor ? MINOR_KEYS[pc] : KEYS[pc];
-  let rel = tonic;
-  if (minor) rel = relMajor(tonic);
-  const f = FIFTHS[rel] ?? 0, sig = {};
-  for (let i = 0; i < Math.abs(f); i++) sig[(f > 0 ? SHARP_ORDER : FLAT_ORDER)[i]] = f > 0 ? 1 : -1;
-  return { tonic, minor, field: tonic + (minor ? "m" : ""), sig, f };
-}
-function relMajor(minorTonic) {   // spelled from the minor tonic's letter so the signature matches
-  const li = (LETTERS.indexOf(minorTonic[0]) + 2) % 7, pc = pitchClass(minorTonic);
-  const alt = (((pc + 3) % 12 - NATURAL[li]) % 12 + 18) % 12 - 6;
-  return LETTERS[li] + (alt === 1 ? "#" : alt === -1 ? "b" : "");
-}
-function pitchClass(name) { return (NATURAL[LETTERS.indexOf(name[0])] + (name[1] === "#" ? 1 : name[1] === "b" ? -1 : 0) + 12) % 12; }
-
-// Chords: diatonic triads of the (parent) seven-note scale.
-function parentSteps() { const d = scaleDef(); return (d.parent ? SCALES[d.parent] : d).steps; }
-function chordInfo(degree) {
-  if (degree < 0) return null;
-  const ps = parentSteps(), pc = tonicPc(), k = keyInfo();
-  const at = i => ps[i % 7] + 12 * Math.floor(i / 7);
-  const root = at(degree), third = at(degree + 2) - root, fifth = at(degree + 4) - root;
-  const quality = third === 4 && fifth === 7 ? "" : third === 3 && fifth === 7 ? "m" : third === 3 && fifth === 6 ? "dim" : third === 4 && fifth === 8 ? "aug" : "";
-  const rootPc = (pc + root) % 12, sp = spell(60 + rootPc, k.sig, k.f);
-  const rootName = sp.letter + (sp.alt === 1 ? "#" : sp.alt === -1 ? "b" : "");
-  const numerals = ["I", "II", "III", "IV", "V", "VI", "VII"];
-  const numeral = quality === "m" || quality === "dim" ? numerals[degree].toLowerCase() + (quality === "dim" ? "°" : "") : numerals[degree] + (quality === "aug" ? "+" : "");
-  const bassRoot = 36 + rootPc, bassFifth = 36 + ((rootPc + fifth) % 12);
-  const voicing = [60 + rootPc - (rootPc > 6 ? 12 : 0)].map(r => [r, r + third, r + fifth])[0];
-  return { symbol: rootName + quality, numeral, bassRoot, bassFifth, voicing };
-}
-function spell(midi, sig, f) {   // letter + alteration for a midi pitch, preferring the key's own spellings
-  const pc = ((midi % 12) + 12) % 12; let best = null;
-  for (let li = 0; li < 7; li++) {
-    let alt = pc - NATURAL[li]; if (alt > 6) alt -= 12; if (alt < -6) alt += 12;
-    if (Math.abs(alt) > 1) continue;
-    const score = (sig[LETTERS[li]] || 0) === alt ? 0 : alt === 0 ? 1 : (f < 0 ? alt < 0 : alt > 0) ? 2 : 3;
-    if (!best || score < best.score) best = { li, alt, score };
-  }
-  return { letter: LETTERS[best.li], alt: best.alt, octave: Math.floor((midi - best.alt) / 12) - 1 };
-}
-
-// ---------- audio ----------
-const A = { ac: null, master: null, noise: null, held: new Map() };
-function ensureAudio() {
-  if (!A.ac) {
-    const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return false;
-    A.ac = new AC();
-    A.master = A.ac.createGain(); A.master.gain.value = (+$("vol").value || 80) / 100 * 0.9;
-    const comp = A.ac.createDynamicsCompressor(); comp.threshold.value = -12; comp.ratio.value = 4;
-    A.master.connect(comp); comp.connect(A.ac.destination);
-    const buf = A.ac.createBuffer(1, A.ac.sampleRate * 2, A.ac.sampleRate), d = buf.getChannelData(0);
-    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-    A.noise = buf;
-  }
-  if (A.ac.state === "suspended") A.ac.resume();
-  return true;
-}
-const now = () => A.ac ? A.ac.currentTime : 0;
-function env(t, peak, decay, node) { node.gain.setValueAtTime(0.0001, t); node.gain.exponentialRampToValueAtTime(peak, t + 0.003); node.gain.exponentialRampToValueAtTime(0.0001, t + decay); }
-function noiseVoice(t, { hp = 0, bp = 0, q = 1, peak = 0.5, decay = 0.1 }) {
-  const src = A.ac.createBufferSource(); src.buffer = A.noise; src.loop = true;
-  let node = src;
-  if (hp) { const f = A.ac.createBiquadFilter(); f.type = "highpass"; f.frequency.value = hp; node.connect(f); node = f; }
-  if (bp) { const f = A.ac.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = bp; f.Q.value = q; node.connect(f); node = f; }
-  const g = A.ac.createGain(); env(t, peak, decay, g); node.connect(g); g.connect(A.master);
-  src.start(t); src.stop(t + decay + 0.05);
-}
-function playDrum(id, t) {
-  if (!ensureAudio()) return; t = Math.max(t, now());
-  const ac = A.ac;
-  const tone = (f0, f1, sweep, peak, decay, type = "sine") => {
-    const o = ac.createOscillator(), g = ac.createGain(); o.type = type;
-    o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + sweep);
-    env(t, peak, decay, g); o.connect(g); g.connect(A.master); o.start(t); o.stop(t + decay + 0.05);
-  };
-  switch (id) {
-    case "kick": tone(160, 42, 0.11, 1.0, 0.38); tone(900, 200, 0.02, 0.3, 0.03, "triangle"); break;
-    case "snare": tone(210, 160, 0.05, 0.35, 0.12, "triangle"); noiseVoice(t, { hp: 1200, bp: 2600, q: 0.8, peak: 0.55, decay: 0.19 }); break;
-    case "clap": [0, 0.012, 0.025].forEach(dt => noiseVoice(t + dt, { bp: 1400, q: 1.2, peak: 0.45, decay: 0.05 })); noiseVoice(t + 0.03, { bp: 1300, q: 1, peak: 0.4, decay: 0.2 }); break;
-    case "hat": noiseVoice(t, { hp: 7500, peak: 0.3, decay: 0.05 }); break;
-    case "ohat": noiseVoice(t, { hp: 6500, peak: 0.3, decay: 0.3 }); break;
-    case "tom": tone(190, 95, 0.2, 0.7, 0.32); break;
-  }
-}
-function toneVoice(midi, t, timbre) {
-  const ac = A.ac, f = 440 * Math.pow(2, (midi - 69) / 12);
-  const o = ac.createOscillator(), o2 = ac.createOscillator(), filt = ac.createBiquadFilter(), g = ac.createGain();
-  const T = { keys: ["triangle", "sine", 2600, 0.5], pluck: ["sawtooth", "triangle", 1800, 0.35], lead: ["square", "sawtooth", 2200, 0.28], flute: ["sine", "triangle", 1400, 0.5] }[timbre] || ["triangle", "sine", 2600, 0.5];
-  o.type = T[0]; o2.type = T[1]; o.frequency.value = f; o2.frequency.value = f * 2.001; o2.detune.value = 4;
-  filt.type = "lowpass"; filt.frequency.value = T[2];
-  const o2g = ac.createGain(); o2g.gain.value = timbre === "flute" ? 0.15 : 0.3;
-  o.connect(filt); o2.connect(o2g); o2g.connect(filt); filt.connect(g); g.connect(A.master);
-  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(T[3], t + (timbre === "flute" ? 0.06 : 0.008));
-  o.start(t); o2.start(t);
-  return {
-    stop(t1) {
-      const rel = timbre === "pluck" ? 0.08 : 0.12;
-      g.gain.setTargetAtTime(0.0001, t1, rel / 3);
-      o.stop(t1 + rel + 0.1); o2.stop(t1 + rel + 0.1);
-    },
-    decayTo(t1) { if (timbre === "pluck") { g.gain.setTargetAtTime(0.0001, t + 0.01, Math.min(0.5, (t1 - t) / 3)); } },
-  };
-}
-function playNote(midi, t, dur, timbre) {
-  if (!ensureAudio()) return; t = Math.max(t, now());
-  const v = toneVoice(midi, t, timbre || P.timbre); v.decayTo(t + dur); v.stop(t + Math.max(0.05, dur - 0.02));
-}
-function playBass(midi, t, dur) {
-  if (!ensureAudio()) return; t = Math.max(t, now());
-  const ac = A.ac, f = 440 * Math.pow(2, (midi - 69) / 12);
-  const o = ac.createOscillator(), filt = ac.createBiquadFilter(), g = ac.createGain();
-  o.type = "sawtooth"; o.frequency.value = f; filt.type = "lowpass"; filt.frequency.setValueAtTime(900, t); filt.frequency.exponentialRampToValueAtTime(220, t + 0.25);
-  o.connect(filt); filt.connect(g); g.connect(A.master);
-  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.5, t + 0.01); g.gain.setTargetAtTime(0.0001, t + Math.max(0.05, dur - 0.06), 0.03);
-  o.start(t); o.stop(t + dur + 0.2);
-}
-function playChord(midis, t, dur) {
-  if (!ensureAudio()) return; t = Math.max(t, now());
-  midis.forEach((m, i) => {
-    const o = A.ac.createOscillator(), g = A.ac.createGain(), filt = A.ac.createBiquadFilter();
-    o.type = "triangle"; o.frequency.value = 440 * Math.pow(2, (m - 69) / 12); filt.type = "lowpass"; filt.frequency.value = 1500;
-    o.connect(filt); filt.connect(g); g.connect(A.master);
-    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.11, t + 0.04 + i * 0.01); g.gain.setValueAtTime(0.11, t + dur - 0.1); g.gain.linearRampToValueAtTime(0.0001, t + dur);
-    o.start(t); o.stop(t + dur + 0.05);
-  });
-}
+let P = null, viewBar = 0, noteLen = 2, kbOct = 1, recArmed = false;
+const pat = () => G.byId(P, P.current);
+const n = () => G.spb(P);
+function setStatus(msg, kind) { const el = $("status"); el.textContent = msg; el.className = "status " + (kind || ""); }
 
 // ---------- sequencer ----------
-const S = { playing: false, pos: 0, nextTime: 0, anchorTime: 0, timer: null, seq: [], total: 0, uiTimers: [] };
-const stepDur = () => 60 / P.bpm / (P.grid / 4);
-function buildSeq() {   // list of {pid, bar, part} bars to play
-  const out = [];
-  if (playMode === "loop") { for (let b = 0; b < pat().bars; b++) out.push({ pid: pat().id, bar: b, part: -1 }); }
-  else P.song.forEach((part, pi) => { const p = byId(part.pattern); for (let r = 0; r < part.repeat; r++) for (let b = 0; b < p.bars; b++) out.push({ pid: p.id, bar: b, part: pi }); });
-  return out.length ? out : [{ pid: pat().id, bar: 0, part: -1 }];
-}
-function bassEvents(p, bar) {   // [{step, midi}] within a bar, from kick (root) and snare (fifth)
-  const n = spb(), base = bar * n, ch = chordInfo(p.chords[bar] ?? -1) || chordInfo(0);
-  const kicks = new Set(p.drums.kick.filter(s => s >= base && s < base + n).map(s => s - base));
-  const snares = new Set(p.drums.snare.filter(s => s >= base && s < base + n).map(s => s - base));
-  const steps = [...new Set([...kicks, ...snares])].sort((a, b) => a - b);
-  if (!steps.length) return (p.chords[bar] ?? -1) >= 0 ? [{ step: 0, midi: ch.bassRoot, len: n }] : [];
-  return steps.map((s, i) => ({ step: s, midi: kicks.has(s) ? ch.bassRoot : ch.bassFifth, len: (i + 1 < steps.length ? steps[i + 1] : n) - s }));
-}
-function start() {
-  if (!ensureAudio()) { setStatus("This browser has no Web Audio support.", "err"); return; }
-  stop(true);
-  S.seq = buildSeq(); S.total = S.seq.length * spb(); S.pos = 0;
-  S.nextTime = now() + 0.08; S.anchorTime = S.nextTime; S.playing = true;
-  S.timer = setInterval(tick, 25); tick();
-  $("play").textContent = "■ Stop"; $("play").setAttribute("aria-label", "Stop");
-}
-function stop(silent) {
-  clearInterval(S.timer); S.timer = null; S.playing = false;
-  S.uiTimers.forEach(clearTimeout); S.uiTimers = [];
-  if (!silent) { $("play").textContent = "▶ Play"; $("play").setAttribute("aria-label", "Play"); showPlayhead(-1); if (recArmed) setRec(false); }
-}
-function tick() {
-  const ahead = now() + 0.15, sd = stepDur(), n = spb();
-  while (S.nextTime < ahead) {
-    const pos = S.pos, entry = S.seq[Math.floor(pos / n)], sIn = pos % n, p = byId(entry.pid), abs = entry.bar * n + sIn;
-    let t = S.nextTime; if (sIn % 2 === 1) t += P.swing / 100 * sd * 0.5;
-    for (const d of DRUMS) if (p.drums[d.id].includes(abs)) playDrum(d.id, t);
-    for (const note of p.melody) if (note.step === abs) playNote(midiOfRow(note.row), t, note.len * sd * 0.95);
-    if ($("hearBass").checked) for (const e of bassEvents(p, entry.bar)) if (e.step === sIn) playBass(e.midi, t, e.len * sd);
-    if (sIn === 0 && $("hearChords").checked) { const c = chordInfo(p.chords[entry.bar] ?? -1); if (c) playChord(c.voicing, t, n * sd); }
-    const delay = Math.max(0, (S.nextTime - now()) * 1000);
-    S.uiTimers.push(setTimeout(() => { S.uiTimers.shift(); showPlayhead(sIn, entry, p); }, delay));
-    S.nextTime += sd; S.pos = (S.pos + 1) % S.total;
-    if (S.pos === 0) { S.anchorTime = S.nextTime; const seq = buildSeq(); if (seq.length) { S.seq = seq; S.total = seq.length * n; } }
-  }
-}
-function quantizedHit() {   // where "now" lands in the playing sequence -> {p, abs, sIn, entry}
-  const n = spb(), sd = stepDur();
-  let pos = Math.round((now() - S.anchorTime) / sd); pos = ((pos % S.total) + S.total) % S.total;
-  const entry = S.seq[Math.floor(pos / n)]; return { p: byId(entry.pid), abs: entry.bar * n + pos % n, sIn: pos % n, entry };
-}
+const seq = G.Sequencer({ project: () => P, currentPattern: pat, synth: () => SY, options: () => ({ hearChords: $("hearChords").checked, hearBass: $("hearBass").checked }), onStep: showPlayhead });
 function showPlayhead(sIn, entry, p) {
   document.querySelectorAll(".now").forEach(el => el.classList.remove("now"));
   if (sIn < 0) return;
   if (entry && (p !== pat() || entry.bar !== viewBar)) {
     if (!$("follow").checked) { markPart(entry.part); return; }
-    if (p !== pat()) { cur = P.patterns.indexOf(p); viewBar = entry.bar; renderAll(); }
+    if (p !== pat()) { P.current = p.id; viewBar = entry.bar; renderAll(); }
     else { viewBar = entry.bar; renderBarNav(); renderGrids(); renderChords(); }
   }
   markPart(entry ? entry.part : -1);
   document.querySelectorAll(`.steps .hd[data-step="${sIn}"], .steps .cell[data-step="${sIn}"]`).forEach(el => el.classList.add("now"));
 }
 function markPart(pi) { document.querySelectorAll("#parts li").forEach((li, i) => li.classList.toggle("now", i === pi)); }
-
-// ---------- editing ----------
-function toggleDrum(lane, abs, force) {
-  const arr = pat().drums[lane], i = arr.indexOf(abs);
-  const on = force === undefined ? i < 0 : force;
-  if (on && i < 0) arr.push(abs); if (!on && i >= 0) arr.splice(i, 1);
-  arr.sort((a, b) => a - b); changed();
+function togglePlay() {
+  if (seq.playing) { seq.stop(); $("play").textContent = "▶ Play"; if (recArmed) setRec(false); }
+  else if (seq.start()) $("play").textContent = "■ Stop";
+  else setStatus("This browser has no Web Audio support.", "err");
 }
-function addMelodyNote(p, abs, row, len) {
-  const n = spb(), end = Math.min(abs + len, (Math.floor(abs / n) + 1) * n);
-  p.melody = p.melody.filter(x => !(x.step < end && x.step + x.len > abs));
-  p.melody.push({ step: abs, row, len: end - abs }); p.melody.sort((a, b) => a.step - b.step); changed();
-}
-function noteAt(p, abs) { return p.melody.find(x => x.step <= abs && abs < x.step + x.len); }
-function removeNote(p, note) { p.melody = p.melody.filter(x => x !== note); changed(); }
-function setBars(bars) {
-  const p = pat(), n = spb(), max = bars * n;
-  p.bars = bars; for (const d of DRUMS) p.drums[d.id] = p.drums[d.id].filter(s => s < max);
-  p.melody = p.melody.filter(x => x.step < max); p.chords = Array.from({ length: bars }, (_, i) => p.chords[i] ?? -1);
-  viewBar = Math.min(viewBar, bars - 1); changed(); renderAll();
-}
-function remapSteps(oldSpb, newSpb, ratio) {   // keep the groove's shape across grid/meter changes
-  for (const p of P.patterns) {
-    const map = s => { const b = Math.floor(s / oldSpb), w = Math.round((s % oldSpb) * ratio); return w < newSpb ? b * newSpb + w : -1; };
-    for (const d of DRUMS) p.drums[d.id] = [...new Set(p.drums[d.id].map(map).filter(s => s >= 0))].sort((a, b) => a - b);
-    const notes = [];
-    for (const x of p.melody) { const s = map(x.step); if (s < 0) continue; const len = clamp(Math.round(x.len * ratio), 1, newSpb - s % newSpb); notes.push({ step: s, row: x.row, len }); }
-    p.melody = notes.filter((x, i) => !notes.some((y, j) => j < i && y.step < x.step + x.len && y.step + y.len > x.step));
-  }
-}
-function copyBarNext() {
-  const p = pat(), n = spb(); if (viewBar + 1 >= p.bars) return;
-  const a = viewBar * n, b = (viewBar + 1) * n;
-  for (const d of DRUMS) p.drums[d.id] = [...new Set(p.drums[d.id].filter(s => s < b || s >= b + n).concat(p.drums[d.id].filter(s => s >= a && s < b).map(s => s + n)))].sort((x, y) => x - y);
-  p.melody = p.melody.filter(x => x.step < b || x.step >= b + n).concat(p.melody.filter(x => x.step >= a && x.step < b).map(x => ({ ...x, step: x.step + n }))).sort((x, y) => x.step - y.step);
-  p.chords[viewBar + 1] = p.chords[viewBar]; viewBar++; changed(); renderBarNav(); renderGrids(); renderChords();
-}
-
-// ---------- ABC export ----------
-const MULTS = [48, 32, 24, 16, 12, 8, 6, 4, 3, 2, 1];
-function rests(n) { let s = ""; for (const m of MULTS) while (n >= m) { s += "z" + (m === 1 ? "" : m); n -= m; } return s; }
-const dur = n => n === 1 ? "" : String(n);
-function abcPitch(midi, barState, k) {
-  const sp = spell(midi, k.sig, k.f), L = sp.letter, active = L in barState ? barState[L] : (k.sig[L] || 0);
-  let acc = ""; if (sp.alt !== active) { acc = ACC_TEXT[sp.alt]; barState[L] = sp.alt; }
-  const name = sp.octave >= 5 ? L.toLowerCase() + "'".repeat(sp.octave - 5) : L + ",".repeat(4 - sp.octave);
-  return acc + name;
-}
-function vocalBar(p, bar, withChords, k) {
-  const n = spb(), base = bar * n, notes = p.melody.filter(x => x.step >= base && x.step < base + n).sort((a, b) => a.step - b.step);
-  const ch = withChords ? chordInfo(p.chords[bar] ?? -1) : null, sym = ch ? `"${ch.symbol}"` : "";
-  if (!notes.length) return sym ? sym + rests(n) : "Z";
-  const st = {}; let out = sym, cursor = 0;
-  for (const x of notes) {
-    const s = x.step - base, len = Math.min(x.len, n - s);
-    if (s > cursor) out += rests(s - cursor);
-    out += abcPitch(midiOfRow(x.row), st, k) + dur(len); cursor = s + len;
-  }
-  if (cursor < n) out += rests(n - cursor);
-  return out;
-}
-function insBar(p, bar, k) {
-  const n = spb(), ev = bassEvents(p, bar);
-  if (!ev.length) return "Z";
-  const st = {}; let out = "", cursor = 0;
-  for (const e of ev) { if (e.step > cursor) out += rests(e.step - cursor); out += abcPitch(e.midi, st, k) + dur(e.len); cursor = e.step + e.len; }
-  if (cursor < n) out += rests(n - cursor);
-  return out;
-}
-function drumBar(p, bar) {
-  const n = spb(), base = bar * n, hits = new Map();
-  for (const d of DRUMS) for (const s of p.drums[d.id]) if (s >= base && s < base + n) hits.set(s - base, (hits.get(s - base) || "") + d.perc);
-  const steps = [...hits.keys()].sort((a, b) => a - b);
-  if (!steps.length) return rests(n);
-  let out = "", cursor = 0;
-  steps.forEach((s, i) => { if (s > cursor) out += rests(s - cursor); const len = (i + 1 < steps.length ? steps[i + 1] : n) - s, h = hits.get(s); out += (h.length > 1 ? `[${h}]` : h) + dur(len); cursor = s + len; });
-  return out;
-}
-function header(k) {
-  return [`X:1`, `T:${(P.title || "Groove Box sketch").replace(/\n/g, " ")}`, `M:${P.meter}`, `L:1/${P.grid}`, `Q:1/4=${P.bpm}`, `K:${k.field}`];
-}
-function sectionBars(part) { const p = byId(part.pattern), out = []; for (let r = 0; r < part.repeat; r++) for (let b = 0; b < p.bars; b++) out.push([p, b]); return out; }
-function lines(bars) { const out = []; for (let i = 0; i < bars.length; i += 4) out.push(bars.slice(i, i + 4).join(" | ") + " |"); return out; }
-function exportYuE2(withChords) {
-  const k = keyInfo(), out = header(k);
-  const song = P.song.length ? P.song : [{ pattern: pat().id, repeat: 1, section: "verse" }];
-  for (const part of song) {
-    const bars = sectionBars(part);
-    out.push(`% ${part.section}`);
-    out.push("V: Vocal", ...lines(bars.map(([p, b]) => vocalBar(p, b, withChords, k))));
-    out.push("V: Ins", ...lines(bars.map(([p, b]) => insBar(p, b, k))));
-  }
-  return out.join("\n") + "\n";
-}
-function exportStandard() {
-  const k = keyInfo(), out = header(k);
-  out.splice(out.length - 1, 0, ...DRUMS.map(d => `%%percmap ${d.perc} ${d.gm}${d.head ? " " + d.head : ""}`));
-  out.push(`V:1 clef=treble name="Melody"`, `V:2 clef=bass name="Bass"`, `V:3 clef=perc name="Drums"`);
-  const song = P.song.length ? P.song : [{ pattern: pat().id, repeat: 1, section: "verse" }];
-  for (const part of song) {
-    const bars = sectionBars(part);
-    out.push(`% ${part.section}`);
-    out.push("[V:1]", ...lines(bars.map(([p, b]) => vocalBar(p, b, true, k))));
-    out.push("[V:2]", ...lines(bars.map(([p, b]) => insBar(p, b, k))));
-    out.push("[V:3]", "%%MIDI channel 10", ...lines(bars.map(([p, b]) => drumBar(p, b))));
-  }
-  return out.join("\n") + "\n";
-}
-function currentAbc() { const f = $("flavour").value; return f === "standard" ? exportStandard() : exportYuE2(f === "yue2"); }
-function currentPackage(abc) {
-  return { format: "yue2-score", version: 1, abc: abc || exportYuE2(true), style: "", lyrics: "", seed: 0, max_duration: 240, edited_with: "yue2-groove-box" };
-}
-
-// Bar-length check in the Score Studio's terms (same tokenizer as docs/index.html).
-const TOKEN = /"[^"]*"|\[[A-Za-z]:[^\]]*\]|\[[A-Ga-g]+\]\d*|[_^=]*[A-Ga-g][',]*\d*-?|z\d*|Z\d*|\s+|./g;
-function checkAbc(abc) {
-  const want = beats() / 4 * P.grid, issues = []; let voice = null, bars = {}, section = 0;
-  for (const line of abc.split("\n")) {
-    if (/^%\s*\S/.test(line) && !/^%%/.test(line)) { section++; voice = null; continue; }
-    const v = /^\[?V:\s*(\S+?)\]?\s*$/.exec(line); if (v) { voice = v[1]; continue; }
-    if (!voice || /^[A-Za-z]:/.test(line) || /^%%/.test(line) || !line.trim()) continue;
-    for (const bar of line.split("|")) {
-      const t = bar.trim(); if (!t) continue;
-      bars[voice] = (bars[voice] || 0) + (/^Z(\d*)$/.test(t) ? (+t.slice(1) || 1) : 1);
-      if (/^Z\d*$/.test(t)) continue;
-      let units = 0;
-      for (const tok of t.match(TOKEN) || []) {
-        if (/^\s+$/.test(tok) || tok.startsWith('"')) continue;
-        const m = /(\d+)-?$/.exec(tok); if (/^[\[_^=]*[A-Ga-g]/.test(tok) || /^z/.test(tok)) units += m ? +m[1] : 1;
-        else issues.push(`Unsupported symbol "${tok}" in section ${section}.`);
-      }
-      if (units !== want) issues.push(`Bar with ${units} units (expected ${want}) in section ${section}, ${voice}: “${t.slice(0, 32)}”`);
-    }
-  }
-  const counts = Object.values(bars);
-  if (counts.length > 1 && counts.some(c => c !== counts[0])) issues.push("Voices have different bar counts.");
-  return { issues, bars: counts[0] || 0 };
-}
+function setRec(on) { recArmed = on; $("rec").classList.toggle("on", on); $("rec").setAttribute("aria-pressed", String(on)); }
 
 // ---------- rendering ----------
-function setStatus(msg, kind = "") { const el = $("status"); el.textContent = msg; el.className = "status " + kind; }
 function renderAll() {
   viewBar = Math.min(viewBar, pat().bars - 1);
   $("bpm").value = P.bpm; $("bpmOut").value = P.bpm; $("swing").value = P.swing; $("swingOut").value = P.swing;
-  $("key").value = P.key; $("scale").value = P.scale; $("timbre").value = P.timbre; $("title").value = P.title || "";
+  $("key").value = P.key; $("scale").value = P.scale; $("title").value = P.title || "";
   $("patName").value = pat().name;
   seg("barsSeg", "bars", pat().bars); seg("gridSeg", "grid", P.grid); seg("meterSeg", "meter", P.meter); seg("octSeg", "oct", P.octave); seg("lenSeg", "len", noteLen); seg("kbOctSeg", "kb", kbOct);
   renderTabs(); renderBarNav(); renderGrids(); renderKeys(); renderChords(); renderSong(); renderLibrary(); scheduleExport();
@@ -672,7 +292,7 @@ function renderAll() {
 function seg(id, attr, value) { $(id).querySelectorAll("button").forEach(b => b.classList.toggle("on", String(b.dataset[attr]) === String(value))); }
 function renderTabs() {
   const el = $("patTabs"); el.innerHTML = "";
-  P.patterns.forEach((p, i) => { const b = document.createElement("button"); b.textContent = p.name; b.className = i === cur ? "on" : ""; b.onclick = () => { cur = i; viewBar = 0; renderAll(); }; el.appendChild(b); });
+  P.patterns.forEach(p => { const b = document.createElement("button"); b.textContent = p.name; b.className = p.id === pat().id ? "on" : ""; b.onclick = () => { P.current = p.id; viewBar = 0; if (seq.playing && seq.mode === "loop") seq.start(); changed(); renderAll(); }; el.appendChild(b); });
   $("patDel").disabled = P.patterns.length < 2;
 }
 function renderBarNav() {
@@ -680,47 +300,45 @@ function renderBarNav() {
   for (let b = 0; b < pat().bars; b++) { const btn = document.createElement("button"); btn.textContent = b + 1; btn.className = b === viewBar ? "on" : ""; btn.onclick = () => { viewBar = b; renderBarNav(); renderGrids(); renderChords(); }; el.appendChild(btn); }
   $("copyBar").disabled = viewBar + 1 >= pat().bars;
 }
-function gridHeader(container, n) {
-  container.style.setProperty("--n", n);
-  const corner = document.createElement("div"); container.appendChild(corner);
+function gridHeader(container, steps) {
+  container.style.setProperty("--n", steps);
+  container.appendChild(document.createElement("div"));
   const perBeat = P.grid / 4;
-  for (let s = 0; s < n; s++) { const h = document.createElement("div"); h.className = "hd"; h.dataset.step = s; h.textContent = s % perBeat === 0 ? (s / perBeat + 1) : "·"; container.appendChild(h); }
+  for (let s = 0; s < steps; s++) { const h = document.createElement("div"); h.className = "hd"; h.dataset.step = s; h.textContent = s % perBeat === 0 ? (s / perBeat + 1) : "·"; container.appendChild(h); }
 }
 function renderGrids() {
-  const n = spb(), base = viewBar * n, p = pat(), perBeat = P.grid / 4;
-  // drums
-  const dg = $("drumGrid"); dg.innerHTML = ""; gridHeader(dg, n);
-  for (const d of DRUMS) {
+  const steps = n(), base = viewBar * steps, p = pat(), perBeat = P.grid / 4;
+  const dg = $("drumGrid"); dg.innerHTML = ""; gridHeader(dg, steps);
+  for (const d of G.DRUMS) {
     const lab = document.createElement("div"); lab.className = "lab"; lab.style.setProperty("--lane", d.color); lab.innerHTML = `<b></b>${d.label}`; dg.appendChild(lab);
-    for (let s = 0; s < n; s++) {
+    for (let s = 0; s < steps; s++) {
       const c = document.createElement("div"); c.className = "cell" + (s % perBeat === 0 ? " beat" : "") + (p.drums[d.id].includes(base + s) ? " on" : "");
       c.dataset.step = s; c.dataset.lane = d.id; c.style.setProperty("--lane", d.color); c.setAttribute("role", "button"); c.setAttribute("aria-label", `${d.label} step ${s + 1}`); dg.appendChild(c);
     }
   }
-  // melody (top row = highest)
-  const mg = $("melGrid"); mg.innerHTML = ""; gridHeader(mg, n);
-  const rows = nRows(), scaleN = scaleDef().steps.length;
+  const mg = $("melGrid"); mg.innerHTML = ""; gridHeader(mg, steps);
+  const rows = G.nRows(P), scaleN = G.scaleDef(P).steps.length;
+  const layerMidis = new Set(); for (const k of Object.keys(p.layers)) for (const x of p.layers[k]) if (x.step >= base && x.step < base + steps) layerMidis.add(x.step + ":" + G.rowOfMidi(P, x.midi));
   for (let row = rows - 1; row >= 0; row--) {
     const tonic = row % scaleN === 0;
-    const lab = document.createElement("div"); lab.className = "lab" + (tonic ? " tonic" : ""); lab.textContent = rowName(row); mg.appendChild(lab);
-    for (let s = 0; s < n; s++) {
-      const note = noteAt(p, base + s), on = note && note.row === row;
+    const lab = document.createElement("div"); lab.className = "lab" + (tonic ? " tonic" : ""); lab.textContent = G.rowName(P, row); mg.appendChild(lab);
+    for (let s = 0; s < steps; s++) {
+      const note = G.noteAt(p, base + s), on = note && note.row === row;
       const c = document.createElement("div");
-      c.className = "cell" + (s % perBeat === 0 ? " beat" : "") + (tonic ? " tonic" : "") + (on ? (note.step === base + s ? " on head" : " on tail") + (note.step + note.len - 1 > base + s ? " cont" : "") : "");
-      c.dataset.step = s; c.dataset.row = row; c.setAttribute("role", "button"); c.setAttribute("aria-label", `${rowName(row)} step ${s + 1}`); mg.appendChild(c);
+      c.className = "cell" + (s % perBeat === 0 ? " beat" : "") + (tonic ? " tonic" : "") + (on ? (note.step === base + s ? " on head" : " on tail") + (note.step + note.len - 1 > base + s ? " cont" : "") : "") + (!on && layerMidis.has((base + s) + ":" + row) ? " layer" : "");
+      c.dataset.step = s; c.dataset.row = row; c.setAttribute("role", "button"); c.setAttribute("aria-label", `${G.rowName(P, row)} step ${s + 1}`); mg.appendChild(c);
     }
   }
+  const layers = Object.keys(p.layers).filter(k => p.layers[k].length);
+  $("layerNote").textContent = layers.length ? `Dots are notes played on stage instruments (${layers.map(k => k === "bass" ? "bass" : (P.deck.find(i => i.id === k) || { name: k }).name).join(", ")}); edit those on the stage.` : "";
 }
 function renderPads() {
   const el = $("pads"); el.innerHTML = "";
-  for (const d of DRUMS) { const b = document.createElement("button"); b.className = "pad"; b.textContent = d.label; b.dataset.lane = d.id; b.style.setProperty("--lane", d.color); el.appendChild(b); }
+  for (const d of G.DRUMS) { const b = document.createElement("button"); b.className = "pad"; b.textContent = d.label; b.dataset.lane = d.id; b.style.setProperty("--lane", d.color); el.appendChild(b); }
 }
 function renderKeys() {
-  const el = $("keys"), n = scaleDef().steps.length; el.innerHTML = ""; el.style.setProperty("--k", n + 1);
-  for (let i = 0; i <= n; i++) {
-    const row = kbOct * n + i, b = document.createElement("button"); b.className = "key" + (i % n === 0 ? " tonic" : ""); b.dataset.row = row;
-    b.innerHTML = `${rowName(row)}<small>${i % n === 0 ? "do" : ["", "re", "mi", "fa", "so", "la", "ti"][i] || ""}</small>`; el.appendChild(b);
-  }
+  const el = $("keys"), k = G.scaleDef(P).steps.length; el.innerHTML = ""; el.style.setProperty("--k", k + 1);
+  for (let i = 0; i <= k; i++) { const row = kbOct * k + i, b = document.createElement("button"); b.className = "key" + (i % k === 0 ? " tonic" : ""); b.dataset.row = row; b.innerHTML = `${G.rowName(P, row)}<small>${G.SOLFEGE[i % k] || ""}</small>`; el.appendChild(b); }
 }
 function renderChords() {
   const el = $("chordBars"); el.innerHTML = ""; const p = pat();
@@ -730,9 +348,9 @@ function renderChords() {
   const none = document.createElement("button"); none.className = "chord" + ((p.chords[viewBar] ?? -1) < 0 ? " on" : ""); none.innerHTML = `—<small>no chord</small>`;
   none.onclick = () => { p.chords[viewBar] = -1; changed(); renderChords(); }; grid.appendChild(none);
   for (let d = 0; d < 7; d++) {
-    const c = chordInfo(d), b = document.createElement("button"); b.className = "chord" + (p.chords[viewBar] === d ? " on" : "");
+    const c = G.chordInfo(P, d), b = document.createElement("button"); b.className = "chord" + (p.chords[viewBar] === d ? " on" : "");
     b.innerHTML = `${c.symbol}<small>${c.numeral}</small>`;
-    b.addEventListener("pointerdown", () => { p.chords[viewBar] = d; playChord(c.voicing, now(), 0.8); changed(); renderChords(); });
+    b.addEventListener("pointerdown", () => { p.chords[viewBar] = d; SY.chord(SY.channelFor("chords"), c.voicing, SY.now(), 0.8, 0.6); changed(); renderChords(); });
     grid.appendChild(b);
   }
   box.appendChild(grid); el.appendChild(box);
@@ -740,15 +358,15 @@ function renderChords() {
 function renderSong() {
   const ul = $("parts"); ul.innerHTML = ""; let total = 0;
   P.song.forEach((part, i) => {
-    const p = byId(part.pattern); total += p.bars * part.repeat;
+    const p = G.byId(P, part.pattern); total += p.bars * part.repeat;
     const li = document.createElement("li");
-    const sec = document.createElement("select"); SECTION_TYPES.forEach(t => { const o = document.createElement("option"); o.value = o.textContent = t; if (t === part.section) o.selected = true; sec.appendChild(o); });
+    const sec = document.createElement("select"); G.SECTION_TYPES.forEach(t => { const o = document.createElement("option"); o.value = o.textContent = t; if (t === part.section) o.selected = true; sec.appendChild(o); });
     sec.onchange = () => { part.section = sec.value; changed(); };
     const ps = document.createElement("select"); P.patterns.forEach(q => { const o = document.createElement("option"); o.value = q.id; o.textContent = q.name; if (q.id === part.pattern) o.selected = true; ps.appendChild(o); });
     ps.onchange = () => { part.pattern = ps.value; changed(); renderSong(); };
     const x = document.createElement("span"); x.textContent = "×"; x.className = "muted";
     const rep = document.createElement("input"); rep.type = "number"; rep.min = 1; rep.max = 16; rep.value = part.repeat; rep.setAttribute("aria-label", "Repeats");
-    rep.onchange = () => { part.repeat = clamp(parseInt(rep.value || "1", 10), 1, 16); rep.value = part.repeat; changed(); renderSong(); };
+    rep.onchange = () => { part.repeat = G.clamp(parseInt(rep.value || "1", 10), 1, 16); rep.value = part.repeat; changed(); renderSong(); };
     const bars = document.createElement("span"); bars.className = "bars"; bars.textContent = `${p.bars * part.repeat} bars`;
     const tools = document.createElement("div"); tools.className = "tools";
     const btn = (label, title, fn, dis) => { const b = document.createElement("button"); b.textContent = label; b.title = title; b.setAttribute("aria-label", title); b.disabled = !!dis; b.onclick = fn; tools.appendChild(b); };
@@ -757,196 +375,144 @@ function renderSong() {
     btn("✕", "Remove part", () => { P.song.splice(i, 1); changed(); renderSong(); }, P.song.length < 2);
     li.append(sec, ps, x, rep, bars, tools); ul.appendChild(li);
   });
-  const secs = total * beats() * 60 / P.bpm;
-  $("songLen").textContent = `${total} bars ≈ ${Math.round(secs)} s at ${P.bpm} BPM`;
+  $("songLen").textContent = `${total} bars ≈ ${Math.round(total * G.beats(P) * 60 / P.bpm)} s at ${P.bpm} BPM`;
 }
-
 let exportTimer = null;
 function scheduleExport() { clearTimeout(exportTimer); exportTimer = setTimeout(renderExport, 250); }
 function renderExport() {
-  const abc = currentAbc(); $("abcOut").value = abc;
-  const flavour = $("flavour").value, { issues, bars } = checkAbc(abc);
-  const el = $("check");
+  const abc = G.exportAbc(P, $("flavour").value); $("abcOut").value = abc;
+  const flavour = $("flavour").value, { issues, bars } = G.checkAbc(P, abc), el = $("check");
   if (issues.length) { el.textContent = `${issues.length} issue(s): ${issues.slice(0, 3).join(" ")}`; el.className = "status err"; }
-  else { el.textContent = `${bars} bars · ${flavour === "standard" ? "standard ABC with a drum staff" : flavour === "yue2" ? "YuE2 score with chord symbols (planning: full)" : "YuE2 melody-only score (planning: melody)"} · bar lengths OK`; el.className = "status ok"; }
+  else { el.textContent = `${bars} bars · ${flavour === "standard" ? "standard ABC with every instrument" : flavour === "yue2" ? "YuE2 score with chord symbols (planning: full)" : "YuE2 melody-only score (planning: melody)"} · bar lengths OK`; el.className = "status ok"; }
   try { if (window.ABCJS) ABCJS.renderAbc("notation", abc, { responsive: "resize", paddingtop: 6, paddingbottom: 6, staffwidth: 740 }); } catch (e) { console.warn("render", e); }
 }
-
-// ---------- persistence ----------
-const AUTOSAVE = "yue2-groovebox:autosave", LIB = "yue2-groovebox:library";
-let saveTimer = null;
-function changed() { clearTimeout(saveTimer); saveTimer = setTimeout(() => { try { localStorage.setItem(AUTOSAVE, JSON.stringify(P)); } catch (e) { /* private mode */ } }, 300); scheduleExport(); }
-function library() { try { return JSON.parse(localStorage.getItem(LIB) || "[]"); } catch (e) { return []; } }
-function setLibrary(items) { try { localStorage.setItem(LIB, JSON.stringify(items)); } catch (e) { setStatus("Couldn't save: this browser blocks storage. Use Export file instead.", "err"); } }
+function changed() { G.saveAutosave(P); scheduleExport(); }
 function renderLibrary() {
-  const ul = $("lib"); ul.innerHTML = "";
-  const items = library();
+  const ul = $("lib"); ul.innerHTML = ""; const items = G.library();
   if (!items.length) { const li = document.createElement("li"); li.className = "muted"; li.textContent = "Nothing saved yet. Your current work is kept automatically; Save keeps a named copy you can come back to."; ul.appendChild(li); return; }
   items.forEach(item => {
     const li = document.createElement("li");
     const name = document.createElement("span"); name.className = "name"; name.textContent = item.name;
-    const meta = document.createElement("span"); meta.className = "meta"; meta.textContent = `${new Date(item.saved).toLocaleString()} · ${item.project.patterns.length} loop(s) · ${item.project.bpm} BPM · ${item.project.key} ${SCALES[item.project.scale]?.label.split(" ")[0] || ""}`;
+    const meta = document.createElement("span"); meta.className = "meta"; meta.textContent = `${new Date(item.saved).toLocaleString()} · ${item.project.patterns.length} loop(s) · ${item.project.bpm} BPM · ${item.project.key}`;
     const tools = document.createElement("div"); tools.className = "tools";
     const btn = (label, fn) => { const b = document.createElement("button"); b.textContent = label; b.onclick = fn; tools.appendChild(b); };
     btn("Load", () => { loadProject(item.project); setStatus(`Loaded “${item.name}”.`, "ok"); });
-    btn("ABC", () => { const saved = P; P = clone(item.project); const abc = exportYuE2(true); P = saved; download(new Blob([abc], { type: "text/plain" }), safeName(item.name) + ".abc"); });
-    btn("✕", function () { armed(this, () => { setLibrary(library().filter(x => x.id !== item.id)); renderLibrary(); }); });
+    btn("ABC", () => G.download(new Blob([G.exportYuE2(G.normalizeProject(item.project), true)], { type: "text/plain" }), G.safeName(item.name) + ".abc"));
+    btn("✕", function () { armed(this, () => { G.setLibrary(G.library().filter(x => x.id !== item.id)); renderLibrary(); }); });
     li.append(name, meta, tools); ul.appendChild(li);
   });
 }
 function loadProject(p) {
-  P = clone(p); if (!P.patterns?.length) P.patterns = [newPattern("Loop 1")];
-  for (const q of P.patterns) { for (const d of DRUMS) q.drums[d.id] = q.drums[d.id] || []; q.chords = Array.from({ length: q.bars }, (_, i) => q.chords?.[i] ?? -1); q.melody = q.melody || []; }
-  P.song = (P.song || []).filter(s => P.patterns.some(q => q.id === s.pattern)); if (!P.song.length) P.song = [{ pattern: P.patterns[0].id, repeat: 1, section: "verse" }];
-  if (!SCALES[P.scale]) P.scale = "major"; if (!KEYS.includes(P.key)) P.key = "C";
-  cur = 0; viewBar = 0; stop(); renderAll(); changed();
+  P = G.normalizeProject(p); if (!P.patterns.some(q => q.id === P.current)) P.current = P.patterns[0].id;
+  viewBar = 0; if (seq.playing) togglePlay();
+  SY.setDeck(P.deck.map(i => ({ id: i.id, role: i.role, sound: G.SOUND_BY_ID[i.sound] })));
+  renderAll(); changed();
 }
-const safeName = s => (s || "groove").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-") || "groove";
-function download(blob, name) { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); }
-
-// ---------- M3DS score PNG (same container as the Score Studio / m3ds.py) ----------
-const HEADER_SIZE = 40, FLAG_GZIP = 1;
-const CRC_TABLE = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
-function crc32(bytes) { let c = 0xFFFFFFFF; for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
-function encodeM3DS(data, fname, minSide = 256) {
-  const blob = pako.gzip(data, { level: 9 }), fb = new TextEncoder().encode(fname);
-  const raw0 = new Uint8Array(HEADER_SIZE + fb.length + blob.length), dv = new DataView(raw0.buffer);
-  raw0.set([77, 51, 68, 83], 0); dv.setUint8(4, 1); dv.setUint8(5, FLAG_GZIP); dv.setUint16(6, 0); dv.setUint16(8, 1);
-  dv.setBigUint64(10, BigInt(blob.length)); dv.setUint32(18, blob.length); dv.setUint32(22, crc32(blob));
-  dv.setBigUint64(26, BigInt(data.length)); dv.setUint32(34, crc32(data)); dv.setUint16(38, fb.length);
-  raw0.set(fb, HEADER_SIZE); raw0.set(blob, HEADER_SIZE + fb.length);
-  const pixels = Math.ceil(raw0.length / 3), w = Math.max(minSide, Math.ceil(Math.sqrt(pixels))), h = Math.max(minSide, Math.ceil(pixels / w));
-  const rgb = new Uint8Array(w * h * 3); rgb.set(raw0);
-  return writePngRGB(rgb, w, h);
-}
-function writePngRGB(rgb, w, h) {
-  const rowLen = w * 3, filtered = new Uint8Array((rowLen + 1) * h);
-  for (let y = 0; y < h; y++) { filtered[y * (rowLen + 1)] = 0; filtered.set(rgb.subarray(y * rowLen, (y + 1) * rowLen), y * (rowLen + 1) + 1); }
-  const chunk = (type, body) => { const out = new Uint8Array(12 + body.length), dv = new DataView(out.buffer); dv.setUint32(0, body.length); out.set(new TextEncoder().encode(type), 4); out.set(body, 8); dv.setUint32(8 + body.length, crc32(out.subarray(4, 8 + body.length))); return out; };
-  const ihdr = new Uint8Array(13), idv = new DataView(ihdr.buffer); idv.setUint32(0, w); idv.setUint32(4, h); ihdr.set([8, 2, 0, 0, 0], 8);
-  return new Blob([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ihdr), chunk("IDAT", pako.deflate(filtered, { level: 9 })), chunk("IEND", new Uint8Array(0))], { type: "image/png" });
-}
-
-// ---------- input wiring ----------
-let recArmed = false;
-function setRec(on) { recArmed = on; $("rec").classList.toggle("on", on); $("rec").setAttribute("aria-pressed", String(on)); }
-function flash(el) { el.classList.add("hit"); setTimeout(() => el.classList.remove("hit"), 120); }
-// Two taps within 3 s instead of a confirm() dialog: works on phones and in hosts that swallow dialogs.
 function armed(btn, fn) {
   if (btn.dataset.armed) { clearTimeout(+btn.dataset.armed); delete btn.dataset.armed; btn.textContent = btn.dataset.label; btn.classList.remove("arm"); fn(); return; }
   btn.dataset.label = btn.textContent; btn.textContent = "Tap again"; btn.classList.add("arm");
   btn.dataset.armed = setTimeout(() => { delete btn.dataset.armed; btn.textContent = btn.dataset.label; btn.classList.remove("arm"); }, 3000);
 }
+function flash(el) { el.classList.add("hit"); setTimeout(() => el.classList.remove("hit"), 120); }
 
-$("play").onclick = () => S.playing ? stop() : start();
-$("rec").onclick = () => { setRec(!recArmed); if (recArmed && !S.playing) start(); };
-$("modeLoop").onclick = () => { playMode = "loop"; $("modeLoop").classList.add("on"); $("modeSong").classList.remove("on"); if (S.playing) start(); };
-$("modeSong").onclick = () => { playMode = "song"; $("modeSong").classList.add("on"); $("modeLoop").classList.remove("on"); if (S.playing) start(); };
-$("bpm").oninput = () => { P.bpm = +$("bpm").value; $("bpmOut").value = P.bpm; if (S.playing) S.anchorTime = S.nextTime - S.pos * stepDur(); changed(); renderSong(); };
+// ---------- wiring ----------
+$("play").onclick = togglePlay;
+$("rec").onclick = () => { setRec(!recArmed); if (recArmed && !seq.playing) togglePlay(); };
+$("modeLoop").onclick = () => { seq.setMode("loop"); $("modeLoop").classList.add("on"); $("modeSong").classList.remove("on"); };
+$("modeSong").onclick = () => { seq.setMode("song"); $("modeSong").classList.add("on"); $("modeLoop").classList.remove("on"); };
+$("bpm").oninput = () => { P.bpm = +$("bpm").value; $("bpmOut").value = P.bpm; seq.retime(); changed(); renderSong(); };
 $("swing").oninput = () => { P.swing = +$("swing").value; $("swingOut").value = P.swing; changed(); };
-$("vol").oninput = () => { if (A.master) A.master.gain.value = +$("vol").value / 100 * 0.9; };
-document.addEventListener("keydown", e => { if (e.code === "Space" && !/INPUT|TEXTAREA|SELECT|BUTTON/.test(document.activeElement?.tagName || "")) { e.preventDefault(); S.playing ? stop() : start(); } });
+$("vol").oninput = () => SY.setVolume(+$("vol").value / 100);
+document.addEventListener("keydown", e => { if (e.code === "Space" && !/INPUT|TEXTAREA|SELECT|BUTTON/.test(document.activeElement?.tagName || "")) { e.preventDefault(); togglePlay(); } });
+document.addEventListener("pointerdown", () => SY.ensure(), { passive: true });
 
-// patterns
-$("patNew").onclick = () => { P.patterns.push(newPattern(`Loop ${P.patterns.length + 1}`, pat().bars)); cur = P.patterns.length - 1; viewBar = 0; changed(); renderAll(); };
-$("patDup").onclick = () => { const c = clone(pat()); c.id = uid(); c.name = pat().name + " copy"; P.patterns.splice(cur + 1, 0, c); cur++; changed(); renderAll(); };
+$("patNew").onclick = () => { const p = G.newPattern(`Loop ${P.patterns.length + 1}`, pat().bars); P.patterns.push(p); P.current = p.id; viewBar = 0; changed(); renderAll(); };
+$("patDup").onclick = () => { const c = G.clone(pat()); c.id = G.uid(); c.name = pat().name + " copy"; P.patterns.splice(P.patterns.indexOf(pat()) + 1, 0, c); P.current = c.id; changed(); renderAll(); };
 $("patDel").onclick = () => armed($("patDel"), () => {
   if (P.patterns.length < 2) return;
-  const id = pat().id; P.patterns.splice(cur, 1); cur = Math.max(0, cur - 1);
+  const id = pat().id; P.patterns = P.patterns.filter(p => p.id !== id); P.current = P.patterns[0].id;
   P.song.forEach(s => { if (s.pattern === id) s.pattern = P.patterns[0].id; }); changed(); renderAll();
   setStatus("Loop deleted. Song parts that used it now play the first loop.", "");
 });
 $("patName").oninput = () => { pat().name = $("patName").value || "Loop"; changed(); renderTabs(); renderSong(); };
-$("barsSeg").onclick = e => { const b = e.target.closest("button"); if (b) setBars(+b.dataset.bars); };
-$("gridSeg").onclick = e => { const b = e.target.closest("button"); if (!b || +b.dataset.grid === P.grid) return; const old = spb(), g = +b.dataset.grid; const ratio = g / P.grid; P.grid = g; remapSteps(old, spb(), ratio); noteLen = clamp(Math.round(noteLen * ratio), 1, 8); changed(); renderAll(); if (S.playing) start(); };
-$("meterSeg").onclick = e => { const b = e.target.closest("button"); if (!b || b.dataset.meter === P.meter) return; const old = spb(); P.meter = b.dataset.meter; remapSteps(old, spb(), 1); changed(); renderAll(); if (S.playing) start(); };
-$("copyBar").onclick = copyBarNext;
-$("clearDrums").onclick = () => { const n = spb(), a = viewBar * n; for (const d of DRUMS) pat().drums[d.id] = pat().drums[d.id].filter(s => s < a || s >= a + n); changed(); renderGrids(); };
-$("clearMel").onclick = () => { const n = spb(), a = viewBar * n; pat().melody = pat().melody.filter(x => x.step < a || x.step >= a + n); changed(); renderGrids(); };
+$("barsSeg").onclick = e => { const b = e.target.closest("button"); if (b) { G.setBars(P, pat(), +b.dataset.bars); viewBar = Math.min(viewBar, pat().bars - 1); if (seq.playing) seq.start(); changed(); renderAll(); } };
+$("gridSeg").onclick = e => { const b = e.target.closest("button"); if (!b || +b.dataset.grid === P.grid) return; const old = n(), g = +b.dataset.grid, ratio = g / P.grid; P.grid = g; G.remapSteps(P, old, n(), ratio); noteLen = G.clamp(Math.round(noteLen * ratio), 1, 8); changed(); renderAll(); if (seq.playing) seq.start(); };
+$("meterSeg").onclick = e => { const b = e.target.closest("button"); if (!b || b.dataset.meter === P.meter) return; const old = n(); P.meter = b.dataset.meter; G.remapSteps(P, old, n(), 1); changed(); renderAll(); if (seq.playing) seq.start(); };
+$("copyBar").onclick = () => { if (G.copyBarNext(P, pat(), viewBar)) { viewBar++; changed(); renderBarNav(); renderGrids(); renderChords(); } };
+$("clearDrums").onclick = () => { G.clearBar(P, pat(), viewBar, "drums"); changed(); renderGrids(); };
+$("clearMel").onclick = () => { G.clearBar(P, pat(), viewBar, "melody"); changed(); renderGrids(); };
 
 // drum grid: tap toggles; mouse/pen drag paints
 let paint = null;
 $("drumGrid").addEventListener("pointerdown", e => {
   const c = e.target.closest(".cell"); if (!c) return; e.preventDefault();
-  const abs = viewBar * spb() + +c.dataset.step, on = !c.classList.contains("on");
-  toggleDrum(c.dataset.lane, abs, on); c.classList.toggle("on", on); if (on) playDrum(c.dataset.lane, now());
+  const abs = viewBar * n() + +c.dataset.step, on = !c.classList.contains("on");
+  G.toggleDrum(pat(), c.dataset.lane, abs, on); c.classList.toggle("on", on); if (on) SY.drum(G.DRUM_BY_ID[c.dataset.lane].gm, SY.now(), 1); changed();
   if (e.pointerType !== "touch") paint = { lane: c.dataset.lane, on };
 });
 $("drumGrid").addEventListener("pointermove", e => {
   if (!paint) return; const c = document.elementFromPoint(e.clientX, e.clientY)?.closest?.("#drumGrid .cell"); if (!c || c.dataset.lane !== paint.lane) return;
-  const abs = viewBar * spb() + +c.dataset.step; if (c.classList.contains("on") !== paint.on) { toggleDrum(paint.lane, abs, paint.on); c.classList.toggle("on", paint.on); }
+  const abs = viewBar * n() + +c.dataset.step; if (c.classList.contains("on") !== paint.on) { G.toggleDrum(pat(), paint.lane, abs, paint.on); c.classList.toggle("on", paint.on); changed(); }
 });
 ["pointerup", "pointercancel", "pointerleave"].forEach(t => $("drumGrid").addEventListener(t, () => { paint = null; }));
 
-// melody grid: tap places a note of the chosen length (replacing anything under it); tapping a note removes it; mouse drag right stretches it
+// melody grid: tap places a note of the chosen length; tapping a note removes it; mouse drag right stretches it
 let stretch = null;
 $("melGrid").addEventListener("pointerdown", e => {
   const c = e.target.closest(".cell"); if (!c) return; e.preventDefault();
-  const n = spb(), abs = viewBar * n + +c.dataset.step, row = +c.dataset.row, p = pat(), existing = noteAt(p, abs);
-  if (existing && existing.row === row) { removeNote(p, existing); renderGrids(); return; }
-  addMelodyNote(p, abs, row, noteLen); playNote(midiOfRow(row), now(), noteLen * stepDur()); renderGrids();
+  const abs = viewBar * n() + +c.dataset.step, row = +c.dataset.row, p = pat(), existing = G.noteAt(p, abs);
+  if (existing && existing.row === row) { p.melody = p.melody.filter(x => x !== existing); changed(); renderGrids(); return; }
+  G.addMelodyNote(P, p, abs, row, noteLen); SY.note(SY.channelFor("voice"), G.midiOfRow(P, row), SY.now(), noteLen * seq.stepDur(), 0.9); changed(); renderGrids();
   if (e.pointerType !== "touch") stretch = { abs, row };
 });
 $("melGrid").addEventListener("pointermove", e => {
   if (!stretch) return; const c = document.elementFromPoint(e.clientX, e.clientY)?.closest?.("#melGrid .cell"); if (!c) return;
-  const abs = viewBar * spb() + +c.dataset.step; if (+c.dataset.row !== stretch.row || abs < stretch.abs) return;
-  const note = noteAt(pat(), stretch.abs); if (!note || note.step !== stretch.abs) return;
-  const len = abs - stretch.abs + 1; if (len !== note.len) { addMelodyNote(pat(), stretch.abs, stretch.row, len); renderGrids(); }
+  const abs = viewBar * n() + +c.dataset.step; if (+c.dataset.row !== stretch.row || abs < stretch.abs) return;
+  const note = G.noteAt(pat(), stretch.abs); if (!note || note.step !== stretch.abs) return;
+  const len = abs - stretch.abs + 1; if (len !== note.len) { G.addMelodyNote(P, pat(), stretch.abs, stretch.row, len); changed(); renderGrids(); }
 });
 ["pointerup", "pointercancel", "pointerleave"].forEach(t => $("melGrid").addEventListener(t, () => { stretch = null; }));
 $("lenSeg").onclick = e => { const b = e.target.closest("button"); if (b) { noteLen = +b.dataset.len; seg("lenSeg", "len", noteLen); } };
 $("octSeg").onclick = e => { const b = e.target.closest("button"); if (b) { P.octave = +b.dataset.oct; changed(); renderAll(); } };
 $("kbOctSeg").onclick = e => { const b = e.target.closest("button"); if (b) { kbOct = +b.dataset.kb; seg("kbOctSeg", "kb", kbOct); renderKeys(); } };
 $("key").onchange = () => { P.key = $("key").value; changed(); renderAll(); };
-$("scale").onchange = () => { const oldN = scaleDef().steps.length; P.scale = $("scale").value; const n = scaleDef().steps.length; if (n !== oldN) for (const p of P.patterns) p.melody.forEach(x => { x.row = clamp(Math.round(x.row * n / oldN), 0, 2 * n); }); changed(); renderAll(); };
-$("timbre").onchange = () => { P.timbre = $("timbre").value; changed(); };
+$("scale").onchange = () => { const oldN = G.scaleDef(P).steps.length; P.scale = $("scale").value; const k = G.scaleDef(P).steps.length; if (k !== oldN) for (const p of P.patterns) p.melody.forEach(x => { x.row = G.clamp(Math.round(x.row * k / oldN), 0, 2 * k); }); changed(); renderAll(); };
 $("title").oninput = () => { P.title = $("title").value; changed(); };
 
-// live pads: play now; with Rec on while playing, land on the nearest step
+// live pads and keys: play now; with Rec on while playing, land on the nearest step
 $("pads").addEventListener("pointerdown", e => {
   const b = e.target.closest(".pad"); if (!b) return; e.preventDefault(); flash(b);
-  playDrum(b.dataset.lane, now());
-  if (recArmed && S.playing) { const q = quantizedHit(); if (!q.p.drums[b.dataset.lane].includes(q.abs)) { q.p.drums[b.dataset.lane].push(q.abs); q.p.drums[b.dataset.lane].sort((x, y) => x - y); changed(); } if (q.p === pat() && Math.floor(q.abs / spb()) === viewBar) renderGrids(); }
+  SY.drum(G.DRUM_BY_ID[b.dataset.lane].gm, SY.now(), 1);
+  if (recArmed && seq.playing) { const q = seq.quantizedHit(); if (G.addDrumHit(q.p, b.dataset.lane, q.abs)) changed(); if (q.p === pat() && Math.floor(q.abs / n()) === viewBar) renderGrids(); }
 });
-const held = new Map();   // pointerId -> {voice, row, q, t0}
+const held = new Map();
 $("keys").addEventListener("pointerdown", e => {
   const b = e.target.closest(".key"); if (!b) return; e.preventDefault(); b.setPointerCapture?.(e.pointerId);
-  if (!ensureAudio()) return;
-  const row = +b.dataset.row, voice = toneVoice(midiOfRow(row), now(), P.timbre);
-  held.set(e.pointerId, { voice, row, t0: now(), q: recArmed && S.playing ? quantizedHit() : null, el: b }); b.classList.add("hit");
+  const row = +b.dataset.row; SY.noteOn("k" + e.pointerId, SY.channelFor("voice"), G.midiOfRow(P, row), 0.9);
+  held.set(e.pointerId, { row, t0: SY.now(), q: recArmed && seq.playing ? seq.quantizedHit() : null, el: b }); b.classList.add("hit");
 });
 function keyUp(e) {
-  const h = held.get(e.pointerId); if (!h) return; held.delete(e.pointerId); h.el.classList.remove("hit");
-  const t1 = now(); h.voice.stop(t1);
-  if (h.q) { const n = spb(), len = clamp(Math.round((t1 - h.t0) / stepDur()), 1, n - h.q.abs % n); addMelodyNote(h.q.p, h.q.abs, h.row, len); if (h.q.p === pat()) renderGrids(); }
+  const h = held.get(e.pointerId); if (!h) return; held.delete(e.pointerId); h.el.classList.remove("hit"); SY.noteOff("k" + e.pointerId);
+  if (h.q) { const len = G.clamp(seq.stepsHeld(SY.now() - h.t0), 1, n() - h.q.abs % n()); G.addMelodyNote(P, h.q.p, h.q.abs, h.row, len); changed(); if (h.q.p === pat()) renderGrids(); }
 }
 ["pointerup", "pointercancel"].forEach(t => $("keys").addEventListener(t, keyUp));
 
-// song
 $("partAdd").onclick = () => { const last = P.song[P.song.length - 1]; P.song.push({ pattern: last ? last.pattern : pat().id, repeat: 2, section: last && last.section === "verse" ? "chorus" : "verse" }); changed(); renderSong(); };
-
-// export
 $("flavour").onchange = renderExport;
 $("copyAbc").onclick = async () => { try { await navigator.clipboard.writeText($("abcOut").value); setStatus("ABC copied. Paste it as abc_text, or into the Score Studio.", "ok"); } catch (e) { $("abcOut").select(); setStatus("Select-all and copy from the text box (clipboard access was blocked).", "warn"); } };
-$("dlAbc").onclick = () => download(new Blob([$("abcOut").value], { type: "text/plain" }), safeName(P.title) + ".abc");
+$("dlAbc").onclick = () => G.download(new Blob([$("abcOut").value], { type: "text/plain" }), G.safeName(P.title) + ".abc");
 $("dlPng").onclick = () => {
   if (!window.pako) { setStatus("The PNG packer didn't load (offline?). Download the .abc instead.", "err"); return; }
-  const bytes = new TextEncoder().encode(JSON.stringify(currentPackage(exportYuE2(true)), null, 1));
-  download(encodeM3DS(bytes, "song.yue2.json"), safeName(P.title) + "-score.png");
+  const bytes = new TextEncoder().encode(JSON.stringify(G.scorePackage(P, G.exportYuE2(P, true)), null, 1));
+  G.download(G.encodeM3DS(bytes, "song.yue2.json"), G.safeName(P.title) + "-score.png");
   setStatus("Score PNG downloaded. Send it to /wf /run:score-yue2 as a file (not a photo).", "ok");
 };
 $("openStudio").onclick = () => {
-  try { sessionStorage.setItem("yue2-handoff", JSON.stringify(currentPackage(exportYuE2($("flavour").value !== "yue2melody")))); location.href = "index.html"; }
+  try { sessionStorage.setItem(G.HANDOFF, JSON.stringify(G.scorePackage(P, G.exportYuE2(P, $("flavour").value !== "yue2melody")))); location.href = "index.html"; }
   catch (e) { setStatus("Couldn't hand over (storage blocked). Download the .abc and drop it on the Score Studio instead.", "err"); }
 };
-
-// library
-$("saveLib").onclick = () => {
-  const name = $("saveName").value.trim() || P.name || "Groove"; P.name = name;
-  const items = library().filter(x => x.name !== name); items.unshift({ id: uid(), name, saved: Date.now(), project: clone(P) });
-  setLibrary(items.slice(0, 50)); renderLibrary(); setStatus(`Saved “${name}” in this browser.`, "ok");
-};
-$("exportJson").onclick = () => download(new Blob([JSON.stringify(P, null, 1)], { type: "application/json" }), safeName(P.name) + ".groove.json");
+$("saveLib").onclick = () => { const name = $("saveName").value.trim() || P.name || "Groove"; P.name = name; if (G.saveToLibrary(P, name)) { renderLibrary(); setStatus(`Saved “${name}” in this browser.`, "ok"); } else setStatus("Couldn't save: this browser blocks storage. Use Export file instead.", "err"); };
+$("exportJson").onclick = () => G.download(new Blob([JSON.stringify(P, null, 1)], { type: "application/json" }), G.safeName(P.name) + ".groove.json");
 $("importJson").onclick = () => $("importFile").click();
 $("importFile").onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
@@ -954,20 +520,19 @@ $("importFile").onchange = async e => {
   catch (err) { setStatus(`Couldn't load ${f.name}: ${err.message}`, "err"); }
   e.target.value = "";
 };
-$("resetDemo").onclick = () => armed($("resetDemo"), () => { loadProject(demoProject()); setStatus("Demo groove loaded. Saved grooves are kept.", "ok"); });
+$("resetDemo").onclick = () => armed($("resetDemo"), () => { loadProject(G.demoProject()); setStatus("Demo groove loaded. Saved grooves are kept.", "ok"); });
 
 // ---------- boot ----------
-KEYS.forEach(k => { const o = document.createElement("option"); o.value = o.textContent = k; $("key").appendChild(o); });
-Object.entries(SCALES).forEach(([id, s]) => { const o = document.createElement("option"); o.value = id; o.textContent = s.label; $("scale").appendChild(o); });
-NOTE_LENS.forEach(([n, label]) => { const b = document.createElement("button"); b.dataset.len = n; b.textContent = label; $("lenSeg").appendChild(b); });
+G.KEYS.forEach(k => { const o = document.createElement("option"); o.value = o.textContent = k; $("key").appendChild(o); });
+Object.entries(G.SCALES).forEach(([id, s]) => { const o = document.createElement("option"); o.value = id; o.textContent = s.label; $("scale").appendChild(o); });
+NOTE_LENS.forEach(([len, label]) => { const b = document.createElement("button"); b.dataset.len = len; b.textContent = label; $("lenSeg").appendChild(b); });
 $("vol").value = 80;
 renderPads();
-(() => {
-  let saved = null; try { saved = JSON.parse(localStorage.getItem(AUTOSAVE) || "null"); } catch (e) { /* ignore */ }
-  loadProject(saved && saved.patterns ? saved : demoProject());
-  setStatus(saved ? "Picked up where you left off." : "Press Play to hear the demo, then tap cells to change it.", "");
-})();
-window.GrooveBox = { exportYuE2, exportStandard, checkAbc, loadProject, demoProject, project: () => P };
+const saved = G.loadAutosave();
+loadProject(saved || G.demoProject());
+setStatus(saved ? "Picked up where you left off." : "Press Play to hear the demo, then tap cells to change it.", "");
+SY.load(msg => setStatus(msg, "")).then(engine => setStatus(engine === "fluid" ? "FluidSynth ready: General MIDI instruments." : "Using the built-in sketch sounds (FluidSynth didn't load).", ""));
+window.GrooveBox = { exportYuE2: w => G.exportYuE2(P, w), exportStandard: () => G.exportStandard(P), checkAbc: abc => G.checkAbc(P, abc), loadProject, demoProject: G.demoProject, project: () => P };
 </script>
 </body>
 </html>
