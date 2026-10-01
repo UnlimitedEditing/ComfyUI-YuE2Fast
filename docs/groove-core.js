@@ -352,7 +352,7 @@ function exportStandard(P) {
 }
 function exportAbc(P, flavour) { return flavour === "standard" ? exportStandard(P) : exportYuE2(P, flavour !== "yue2melody"); }
 function scorePackage(P, abc) {
-  return { format: "yue2-score", version: 1, abc: abc || exportYuE2(P, true), style: "", lyrics: "", seed: 0, max_duration: 240, edited_with: "yue2-groove-box" };
+  return { format: "yue2-score", version: 1, abc: abc || exportYuE2(P, true), style: (P.style || "").trim(), lyrics: (P.lyrics || "").trim(), seed: 0, max_duration: 240, edited_with: "yue2-groove-box" };
 }
 // Bar-length check in the Score Studio's terms (same tokenizer as docs/index.html, plus bracket chords).
 const TOKEN = /"[^"]*"|\[[A-Za-z]:[^\]]*\]|\[[^\]]+\]\d*|[_^=]*[A-Ga-g][',]*\d*-?|z\d*|Z\d*|\s+|./g;

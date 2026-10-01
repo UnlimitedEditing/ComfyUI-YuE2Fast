@@ -226,6 +226,8 @@
     </div>
     <div id="check" class="muted"></div>
     <textarea id="abcOut" readonly spellcheck="false" aria-label="ABC notation"></textarea>
+    <label class="field"><span>Style for the render (travels in the score PNG)</span><input id="style" type="text" placeholder="e.g. Afrobeats, warm male vocal, log drum, 104 BPM"></label>
+    <label class="field"><span>Lyrics (optional; [Verse] / [Chorus] blocks in section order)</span><textarea id="lyrics" rows="3" spellcheck="true"></textarea></label>
     <div class="row">
       <button id="copyAbc" class="on">Copy ABC</button>
       <button id="dlAbc">Download .abc</button>
@@ -233,7 +235,7 @@
       <button id="openStudio">Open in Score Studio →</button>
       <a href="groovebox.html" class="chip" style="display:inline-flex; align-items:center; border:1px solid var(--line); text-decoration:none">Score editor →</a>
     </div>
-    <p class="muted">Paste the ABC into the chat as <code>abc_text</code> for a YuE2 render, or send the score PNG to <code>/wf /run:score-yue2</code> as a file. The vocal line is your Voice instrument; the bass line is what you played on a Bass instrument, or follows the kick and snare. Extra layers appear in the standard ABC only.</p>
+    <p class="muted"><b>Score PNG</b> packs the score, style and lyrics into an M3DS image for a Graydient job: send it to <code>/wf /run:score-yue2</code> <b>as a file</b> (a photo gets recompressed and breaks it). Or paste the ABC into the chat as <code>abc_text</code>. The vocal line is your Voice instrument; the bass line is what you played on a Bass instrument, or follows the kick and snare. Extra layers appear in the standard ABC only.</p>
   </div>
 </section>
 
@@ -534,12 +536,15 @@ $("newGroove").onclick = () => armed($("newGroove"), () => { loadProject(G.blank
 
 // score sheet
 function renderScore() {
+  $("style").value = P.style || ""; $("lyrics").value = P.lyrics || "";
   const abc = G.exportAbc(P, $("flavour").value), r = G.checkAbc(P, abc);
   $("abcOut").value = abc;
   $("check").textContent = r.issues.length ? r.issues.length + " issue(s): " + r.issues.slice(0, 2).join(" ") : r.bars + " bars · bar lengths OK";
   $("check").className = r.issues.length ? "err" : "ok";
 }
 $("flavour").onchange = renderScore;
+$("style").oninput = () => { P.style = $("style").value; changed(); };
+$("lyrics").oninput = () => { P.lyrics = $("lyrics").value; changed(); };
 $("copyAbc").onclick = async () => { try { await navigator.clipboard.writeText($("abcOut").value); setStatus("ABC copied.", "ok"); } catch (e) { $("abcOut").select(); setStatus("Select-all and copy from the text box (clipboard blocked).", "warn"); } };
 $("dlAbc").onclick = () => G.download(new Blob([$("abcOut").value], { type: "text/plain" }), G.safeName(P.title) + ".abc");
 $("dlPng").onclick = () => { if (!window.pako) { setStatus("The PNG packer didn't load (offline?). Download the .abc instead.", "err"); return; } const bytes = new TextEncoder().encode(JSON.stringify(G.scorePackage(P, G.exportYuE2(P, true)), null, 1)); G.download(G.encodeM3DS(bytes, "song.yue2.json"), G.safeName(P.title) + "-score.png"); setStatus("Score PNG downloaded. Send it to /wf /run:score-yue2 as a file.", "ok"); };

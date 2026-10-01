@@ -217,6 +217,10 @@
       <div id="notation"></div>
       <div id="check" class="status" style="margin:8px 0"></div>
       <textarea id="abcOut" readonly spellcheck="false" aria-label="ABC notation"></textarea>
+      <div class="grid2" style="gap:8px; margin-top:8px">
+        <label class="inl" style="display:block"><span style="display:block; margin-bottom:4px">Style for the render (travels in the score PNG)</span><input id="style" type="text" style="width:100%" placeholder="e.g. Afrobeats, warm male vocal, log drum, 104 BPM"></label>
+        <label class="inl" style="display:block"><span style="display:block; margin-bottom:4px">Lyrics (optional; [Verse] / [Chorus] blocks)</span><textarea id="lyrics" rows="2"></textarea></label>
+      </div>
       <div class="row" style="margin-top:12px">
         <button id="copyAbc" class="primary">Copy ABC</button>
         <button id="dlAbc">Download .abc</button>
@@ -284,7 +288,7 @@ function setRec(on) { recArmed = on; $("rec").classList.toggle("on", on); $("rec
 function renderAll() {
   viewBar = Math.min(viewBar, pat().bars - 1);
   $("bpm").value = P.bpm; $("bpmOut").value = P.bpm; $("swing").value = P.swing; $("swingOut").value = P.swing;
-  $("key").value = P.key; $("scale").value = P.scale; $("title").value = P.title || "";
+  $("key").value = P.key; $("scale").value = P.scale; $("title").value = P.title || ""; $("style").value = P.style || ""; $("lyrics").value = P.lyrics || "";
   $("patName").value = pat().name;
   seg("barsSeg", "bars", pat().bars); seg("gridSeg", "grid", P.grid); seg("meterSeg", "meter", P.meter); seg("octSeg", "oct", P.octave); seg("lenSeg", "len", noteLen); seg("kbOctSeg", "kb", kbOct);
   renderTabs(); renderBarNav(); renderGrids(); renderKeys(); renderChords(); renderSong(); renderLibrary(); scheduleExport();
@@ -478,6 +482,8 @@ $("kbOctSeg").onclick = e => { const b = e.target.closest("button"); if (b) { kb
 $("key").onchange = () => { P.key = $("key").value; changed(); renderAll(); };
 $("scale").onchange = () => { const oldN = G.scaleDef(P).steps.length; P.scale = $("scale").value; const k = G.scaleDef(P).steps.length; if (k !== oldN) for (const p of P.patterns) p.melody.forEach(x => { x.row = G.clamp(Math.round(x.row * k / oldN), 0, 2 * k); }); changed(); renderAll(); };
 $("title").oninput = () => { P.title = $("title").value; changed(); };
+$("style").oninput = () => { P.style = $("style").value; changed(); };
+$("lyrics").oninput = () => { P.lyrics = $("lyrics").value; changed(); };
 
 // live pads and keys: play now; with Rec on while playing, land on the nearest step
 $("pads").addEventListener("pointerdown", e => {
