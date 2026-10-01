@@ -24,7 +24,19 @@ _INSTALLED = {}  # id(model) -> {name: {stage: {"scale": dict passed to the hook
 
 
 def _make_hook(a, b, coef, scale_box, stage):
-    at, bt = a.t().contiguous(), b.t().contiguous()
+    # Pinned CPU originals, actually cached (a mutable dict, not a reassigned local -- a plain local
+    # reassignment inside the closure doesn't persist across calls) once moved to the live device.
+    # Pinning matters even though we only move off CPU once: the upstream CUDA-graph decoder refuses
+    # ANY unpinned host<->device copy during graph capture ("Cannot copy between CPU and CUDA tensors
+    # during CUDA graph capture unless the CPU tensor is pinned") -- an unpinned lazy .to(cuda) here
+    # broke capture on the very first call, forced an eager fallback (~5x slower), and left the
+    # cudaMallocAsync allocator in a state that then crashed the whole process on a later, unrelated
+    # tensor free. Pinning is the fix the error message itself names.
+    at_cpu = a.t().contiguous()
+    bt_cpu = b.t().contiguous()
+    if torch.cuda.is_available():
+        at_cpu, bt_cpu = at_cpu.pin_memory(), bt_cpu.pin_memory()
+    cache = {"at": at_cpu, "bt": bt_cpu, "device": torch.device("cpu")}
 
     def hook(module, args, output):
         scale = scale_box[stage]
@@ -33,8 +45,11 @@ def _make_hook(a, b, coef, scale_box, stage):
         x = args[0] if args else None
         if not isinstance(x, torch.Tensor):
             return output
-        cur_at, cur_bt = (at, bt) if at.device == x.device else (at.to(x.device), bt.to(x.device))
-        delta = (x.to(torch.float32) @ cur_at) @ cur_bt
+        if cache["device"] != x.device:
+            cache["at"] = cache["at"].to(x.device, non_blocking=True)
+            cache["bt"] = cache["bt"].to(x.device, non_blocking=True)
+            cache["device"] = x.device
+        delta = (x.to(torch.float32) @ cache["at"]) @ cache["bt"]
         return output + (delta * (coef * scale)).to(output.dtype)
 
     return hook
