@@ -93,6 +93,7 @@
       <li><b>Edit</b>: reorder or duplicate sections, make one instrumental, transpose, change tempo, rewrite lyrics or style.</li>
       <li><b>Download</b> the new score PNG and send it to <code>/wf /run:score-yue2</code> <b>as a file</b>.</li>
     </ol>
+    <p class="muted-link" style="margin:12px 0 0; color:var(--muted); font-size:14px">No score yet? Tap one out in the <a href="groovebox.html">Groove Box</a> — drums, melody and chords on touch pads — and open it here.</p>
     <div class="notice"><b>Send PNGs as files, not photos.</b> Chat apps recompress photos, which destroys the data hidden in the pixels. Download the original from the job page, and attach it as a file or document when sending it back.</div>
     <div id="status" class="status" role="status"></div>
   </section>
@@ -623,6 +624,12 @@ $("dlJson").onclick = () => download(new Blob([JSON.stringify(currentPackage(), 
 $("revert").onclick = () => { if (loadedPkg) loadPackage(loadedPkg, "the loaded file"); };
 
 window.YuE2Studio = { loadPackage, decodeM3DS, encodeM3DS, pngToRgb, parseAbc, serializeAbc, validate, handleFiles };
+
+// Hand-off from groovebox.html ("Open in Score Studio"): the package waits in sessionStorage for this tab.
+try {
+  const handoff = sessionStorage.getItem("yue2-handoff");
+  if (handoff) { sessionStorage.removeItem("yue2-handoff"); loadPackage(JSON.parse(handoff), "the Groove Box"); }
+} catch (e) { console.warn("handoff", e); }
 </script>
 </body>
 </html>

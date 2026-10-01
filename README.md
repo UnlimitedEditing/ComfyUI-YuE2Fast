@@ -24,6 +24,18 @@ duplicate / delete sections (lyric blocks follow), make a section instrumental, 
 and edit style, lyrics or the raw ABC with a bar-length check. It exports a new score PNG to re-render.
 Score PNGs must travel as **files** — chat apps recompress photos, and the CRC check will reject them.
 
+## Groove Box
+
+[`docs/groovebox.html`](docs/groovebox.html) (served from the same GitHub Pages site as the Score Studio) is a
+touch-friendly way to *make* a score without typing ABC: a step grid and live pads for drums, a scale grid and
+keys for a monophonic melody, one chord pad per bar, and a song list that stacks the loops into named sections.
+Everything is exported live as ABC in YuE2's own dialect (`% section`, `V: Vocal`, `V: Ins`): the melody becomes
+the vocal line, chord symbols sit on the vocal line, and the bass line is derived from the kick and snare over
+the chosen chord. Three flavours: melody + chords (planning `full`), melody only (planning `melody`), and standard
+multi-voice ABC with a percussion staff for other tools. Grooves autosave in the browser, can be kept in a named
+library or exported as JSON, and the score can be downloaded as `.abc` or as a score PNG, or handed straight to
+the Score Studio for lyrics and style. Playback is a Web Audio sketch, not YuE2.
+
 ## Why
 
 YuE2's advertised RTX 4090 speed (~139 LM tokens/s) comes from the official runtime's
