@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>YuE2 Groove Box</title>
 <meta name="description" content="Tap out drums, melodies and chords on touch pads, stack the loops into a song, and export it as ABC notation for a YuE2 render.">
 <style>
@@ -41,6 +41,7 @@
   button:hover { border-color: var(--accent); }
   button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
   button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  button.arm { background: var(--warn); color: #fff; border-color: var(--warn); }
   button.rec.on { background: var(--rec); border-color: var(--rec); color: #fff; animation: blink 1s steps(2) infinite; }
   @keyframes blink { 50% { opacity: .6; } }
   button:disabled { opacity: .45; cursor: not-allowed; }
@@ -53,7 +54,7 @@
   input[type=number], input[type=text], select, textarea { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; min-height: 38px; }
   select { padding-right: 28px; }
   textarea { width: 100%; resize: vertical; }
-  .transport { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 8px 0; margin: -8px 0 0; border-bottom: 1px solid var(--line); }
+  .transport { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); padding: 8px 0; margin: -8px 0 0; border-bottom: 1px solid var(--line); }
   .transport .panel { padding: 10px 12px; }
   .tbig { min-width: 92px; font-weight: 600; font-size: 16px; }
   .status { font-size: 14px; min-height: 1.5em; color: var(--muted); }
@@ -789,7 +790,7 @@ function renderLibrary() {
     const btn = (label, fn) => { const b = document.createElement("button"); b.textContent = label; b.onclick = fn; tools.appendChild(b); };
     btn("Load", () => { loadProject(item.project); setStatus(`Loaded “${item.name}”.`, "ok"); });
     btn("ABC", () => { const saved = P; P = clone(item.project); const abc = exportYuE2(true); P = saved; download(new Blob([abc], { type: "text/plain" }), safeName(item.name) + ".abc"); });
-    btn("✕", () => { if (confirm(`Delete “${item.name}”?`)) { setLibrary(library().filter(x => x.id !== item.id)); renderLibrary(); } });
+    btn("✕", function () { armed(this, () => { setLibrary(library().filter(x => x.id !== item.id)); renderLibrary(); }); });
     li.append(name, meta, tools); ul.appendChild(li);
   });
 }
@@ -830,6 +831,12 @@ function writePngRGB(rgb, w, h) {
 let recArmed = false;
 function setRec(on) { recArmed = on; $("rec").classList.toggle("on", on); $("rec").setAttribute("aria-pressed", String(on)); }
 function flash(el) { el.classList.add("hit"); setTimeout(() => el.classList.remove("hit"), 120); }
+// Two taps within 3 s instead of a confirm() dialog: works on phones and in hosts that swallow dialogs.
+function armed(btn, fn) {
+  if (btn.dataset.armed) { clearTimeout(+btn.dataset.armed); delete btn.dataset.armed; btn.textContent = btn.dataset.label; btn.classList.remove("arm"); fn(); return; }
+  btn.dataset.label = btn.textContent; btn.textContent = "Tap again"; btn.classList.add("arm");
+  btn.dataset.armed = setTimeout(() => { delete btn.dataset.armed; btn.textContent = btn.dataset.label; btn.classList.remove("arm"); }, 3000);
+}
 
 $("play").onclick = () => S.playing ? stop() : start();
 $("rec").onclick = () => { setRec(!recArmed); if (recArmed && !S.playing) start(); };
@@ -843,11 +850,12 @@ document.addEventListener("keydown", e => { if (e.code === "Space" && !/INPUT|TE
 // patterns
 $("patNew").onclick = () => { P.patterns.push(newPattern(`Loop ${P.patterns.length + 1}`, pat().bars)); cur = P.patterns.length - 1; viewBar = 0; changed(); renderAll(); };
 $("patDup").onclick = () => { const c = clone(pat()); c.id = uid(); c.name = pat().name + " copy"; P.patterns.splice(cur + 1, 0, c); cur++; changed(); renderAll(); };
-$("patDel").onclick = () => {
-  if (P.patterns.length < 2 || !confirm(`Delete “${pat().name}”? Song parts using it will switch to another loop.`)) return;
+$("patDel").onclick = () => armed($("patDel"), () => {
+  if (P.patterns.length < 2) return;
   const id = pat().id; P.patterns.splice(cur, 1); cur = Math.max(0, cur - 1);
   P.song.forEach(s => { if (s.pattern === id) s.pattern = P.patterns[0].id; }); changed(); renderAll();
-};
+  setStatus("Loop deleted. Song parts that used it now play the first loop.", "");
+});
 $("patName").oninput = () => { pat().name = $("patName").value || "Loop"; changed(); renderTabs(); renderSong(); };
 $("barsSeg").onclick = e => { const b = e.target.closest("button"); if (b) setBars(+b.dataset.bars); };
 $("gridSeg").onclick = e => { const b = e.target.closest("button"); if (!b || +b.dataset.grid === P.grid) return; const old = spb(), g = +b.dataset.grid; const ratio = g / P.grid; P.grid = g; remapSteps(old, spb(), ratio); noteLen = clamp(Math.round(noteLen * ratio), 1, 8); changed(); renderAll(); if (S.playing) start(); };
@@ -946,7 +954,7 @@ $("importFile").onchange = async e => {
   catch (err) { setStatus(`Couldn't load ${f.name}: ${err.message}`, "err"); }
   e.target.value = "";
 };
-$("resetDemo").onclick = () => { if (confirm("Replace the current groove with the demo? (Saved grooves are kept.)")) { loadProject(demoProject()); setStatus("Demo groove loaded.", "ok"); } };
+$("resetDemo").onclick = () => armed($("resetDemo"), () => { loadProject(demoProject()); setStatus("Demo groove loaded. Saved grooves are kept.", "ok"); });
 
 // ---------- boot ----------
 KEYS.forEach(k => { const o = document.createElement("option"); o.value = o.textContent = k; $("key").appendChild(o); });
