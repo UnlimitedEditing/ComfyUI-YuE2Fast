@@ -107,12 +107,20 @@ class YuE2FastSong:
             "lora_on": ("INT", {"default": 0, "min": 0, "max": 1, "tooltip": "1 = apply the Two Steps From Hell LoRA pair (AR + NAR, epic orchestral trailer music) as forward-time deltas; 0 = base model."}),
             "lora_ar_scale": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.05, "tooltip": "AR (planning) adapter strength: structure, melody, genre."}),
             "lora_nar_scale": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.05, "tooltip": "NAR (synthesis) adapter strength: the acoustic texture/timbre. 0.3-0.7 is the adapter author's recommended range."}),
+            "cot": ("INT", {"default": 0, "min": 0, "max": 3, "tooltip": "Score-planning mode as a number (Graydient slots 4-8 are numeric only). 0 = auto (the `planning` widget for text mode; for a supplied score: chord symbols -> full, else melody). 1 = full (melody + chords). 2 = melody only. 3 = off (no score at all: a supplied score is ignored and only style/lyrics/seed are used)."}),
         }}
 
     def generate(self, style, lyrics, planning, seed, max_abc_tokens, max_duration, acoustic_steps,
                  temperature=1.0, top_p=0.95, top_k=100, repetition_penalty=1.2, guidance=0.0, backend="torch", abc=None,
-                 instrumental=0, lora_on=0, lora_ar_scale=0.5, lora_nar_scale=0.5):
+                 instrumental=0, lora_on=0, lora_ar_scale=0.5, lora_nar_scale=0.5, cot=0):
         abc = (abc or "").strip() or None
+        explicit_cot = {1: "full", 2: "melody", 3: "off"}.get(int(cot))
+        if explicit_cot:
+            planning = explicit_cot
+        if planning == "off" and abc is not None:
+            # The runtime rejects a supplied score with cot=off; "off" means the score isn't used at all.
+            logging.info("YuE2Fast: cot=off, ignoring the supplied %d-char score", len(abc))
+            abc = None
         instrumental = bool(instrumental)
         plan_lyrics, plan_first = lyrics, False
         if instrumental:
@@ -123,13 +131,14 @@ class YuE2FastSong:
                 abc = make_instrumental(abc)
             elif planning != "off":
                 plan_first = True
-        if abc is not None:
-            # A supplied score decides the mode: chord symbols -> full, melody-only -> melody
-            # (matches the official cover recipe and SheetSage2's with-chords fallback).
+        if abc is not None and not explicit_cot:
+            # Auto: a supplied score decides the mode: chord symbols -> full, melody-only -> melody
+            # (matches the official cover recipe and SheetSage2's with-chords fallback). A model-written
+            # score always has chords, so a re-rendered score PNG is always "full" unless cot overrides.
             planning = "full" if re.search(r'"[^"]+"', abc.split("K:", 1)[-1]) else "melody"
         # Log what the host actually passed in (Graydient field mappings are otherwise invisible).
         logging.info("YuE2Fast inputs: %s", json.dumps({
-            "planning": planning, "seed": seed, "max_abc_tokens": max_abc_tokens, "max_duration": max_duration,
+            "planning": planning, "cot": int(cot), "seed": seed, "max_abc_tokens": max_abc_tokens, "max_duration": max_duration,
             "acoustic_steps": acoustic_steps, "guidance": guidance, "backend": backend, "instrumental": instrumental,
             "lora_on": bool(lora_on), "lora_ar_scale": lora_ar_scale, "lora_nar_scale": lora_nar_scale,
             "style": style[:200], "lyrics_chars": len(lyrics), "lyrics_head": lyrics[:120],
@@ -158,7 +167,8 @@ class YuE2FastSong:
                            abc_sampling=abc_sampling, cancelled=mm.processing_interrupted)
             if plan.abc:
                 abc = make_instrumental(plan.abc)
-                planning = "full" if re.search(r'"[^"]+"', abc.split("K:", 1)[-1]) else "melody"
+                if not explicit_cot:
+                    planning = "full" if re.search(r'"[^"]+"', abc.split("K:", 1)[-1]) else "melody"
                 logging.info("YuE2Fast instrumental: planned %d score tokens, vocal voice stripped", len(plan.abc_ids))
         kwargs = dict(style=style, lyrics=lyrics, cot=planning, seed=int(seed), abc=abc,
                       cfg_scale=None if guidance == 0 else float(guidance),
