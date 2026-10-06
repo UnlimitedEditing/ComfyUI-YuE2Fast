@@ -132,3 +132,62 @@ def instrumental_style(style):
     if not re.search(r"\bno (?:lead )?vocals?\b", lowered):
         parts.append("no vocals")
     return ", ".join(parts)
+
+
+# ---- vocals only: the mirror image of make_instrumental -----------------------------------------------
+_CHORD = re.compile(r'"[^"]*"')
+_INSTRUMENT_WORDS = re.compile(
+    r"\b(?:piano|guitars?|drums?|bass|synths?|strings?|orchestra\w*|violins?|cellos?|horns?|brass|"
+    r"percussion|beats?|keys|organ|pads?|backing|band|instrumental)\b", re.I)
+_NO_INSTRUMENTS = re.compile(r"a cappella|acapella|no instruments?", re.I)
+
+
+def _rest_bar(bar, want):
+    t = bar.strip()
+    if not t or re.fullmatch(r"Z\d*", t):
+        return bar
+    inline = "".join(re.findall(r"\[[A-Za-z]:[^\]]*\]", t))  # inline M:/K:/L: changes must survive
+    return inline + _rests(max(1, int(round(want))))
+
+
+def make_vocals_only(abc):
+    """Return the score with every non-Vocal voice (the instrument voice) replaced by rests and the chord
+    symbols removed from the `V: Vocal` voice, so the model plans a bare sung melody."""
+    meter = unit = voice = None
+    out = []
+    for line in abc.replace("\r", "").split("\n"):
+        m = re.match(r"^M:\s*(\S+)", line)
+        if m:
+            meter = m.group(1)
+        m = re.match(r"^L:\s*(\S+)", line)
+        if m:
+            unit = m.group(1)
+        if re.match(r"^%", line):
+            voice = None
+            out.append(line)
+            continue
+        v = re.match(r"^V:\s*(\S+)", line)
+        if v:
+            voice = v.group(1)
+            out.append(line)
+            continue
+        if voice is None or re.match(r"^[A-Za-z]:", line):
+            out.append(line)
+        elif voice == "Vocal":
+            out.append(_CHORD.sub("", line))
+        else:
+            want = _bar_units(meter, unit)
+            out.append("|".join(_rest_bar(bar, want) for bar in line.split("|")))
+    return "\n".join(out)
+
+
+def vocals_only_style(style):
+    """Drop instrument descriptors (only when several parts remain) and say a cappella plainly."""
+    parts = [p.strip() for p in (style or "").split(",") if p.strip()]
+    if len(parts) > 1:
+        kept = [p for p in parts if not _INSTRUMENT_WORDS.search(p) or _NO_INSTRUMENTS.search(p)]
+        parts = kept or parts[:1]
+    lowered = " ".join(parts).lower()
+    if not _NO_INSTRUMENTS.search(lowered):
+        parts += ["a cappella", "solo vocals", "no instruments"]
+    return ", ".join(parts)

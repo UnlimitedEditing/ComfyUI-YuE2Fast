@@ -103,7 +103,7 @@ class YuE2FastSong:
             "backend": (["torch", "torch-eager"], {"default": "torch", "tooltip": "torch = CUDA graphs (fast). torch-eager = fallback."}),
             # Optional so workflows saved before this input existed still validate.
             "abc": ("STRING", {"forceInput": True, "tooltip": "Supplied score (e.g. from YuE2 Fast Transcribe). Skips score planning; use planning=melody for covers."}),
-            "instrumental": ("INT", {"default": 0, "min": 0, "max": 1, "tooltip": "1 = force an instrumental: the score's V: Vocal voice becomes rests (chords kept), vocal sections become interlude, lyrics are dropped and the style says so. Without a supplied score, the score is planned first (using your lyrics as a section skeleton) and then stripped."}),
+            "instrumental": ("INT", {"default": 0, "min": 0, "max": 2, "tooltip": "2 = vocals only (a cappella): the score's instrument voice becomes rests, chord symbols are dropped from the vocal line, the style says a cappella / no instruments, lyrics are kept. 1 = force an instrumental: the score's V: Vocal voice becomes rests (chords kept), vocal sections become interlude, lyrics are dropped and the style says so. Without a supplied score, the score is planned first (using your lyrics as a section skeleton) and then stripped."}),
             "lora_on": ("INT", {"default": 0, "min": 0, "max": 1, "tooltip": "1 = apply the Two Steps From Hell LoRA pair (AR + NAR, epic orchestral trailer music) as forward-time deltas; 0 = base model."}),
             "lora_ar_scale": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.05, "tooltip": "AR (planning) adapter strength: structure, melody, genre."}),
             "lora_nar_scale": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.05, "tooltip": "NAR (synthesis) adapter strength: the acoustic texture/timbre. 0.3-0.7 is the adapter author's recommended range."}),
@@ -121,7 +121,8 @@ class YuE2FastSong:
             # The runtime rejects a supplied score with cot=off; "off" means the score isn't used at all.
             logging.info("YuE2Fast: cot=off, ignoring the supplied %d-char score", len(abc))
             abc = None
-        instrumental = bool(instrumental)
+        vocals_only = int(instrumental) == 2
+        instrumental = int(instrumental) == 1
         plan_lyrics, plan_first = lyrics, False
         if instrumental:
             from .abc_input import instrumental_style, make_instrumental
@@ -129,6 +130,13 @@ class YuE2FastSong:
             lyrics = ""
             if abc is not None:
                 abc = make_instrumental(abc)
+            elif planning != "off":
+                plan_first = True
+        elif vocals_only:
+            from .abc_input import vocals_only_style, make_vocals_only
+            style = vocals_only_style(style)
+            if abc is not None:
+                abc = make_vocals_only(abc)
             elif planning != "off":
                 plan_first = True
         if abc is not None and not explicit_cot:
@@ -139,7 +147,7 @@ class YuE2FastSong:
         # Log what the host actually passed in (Graydient field mappings are otherwise invisible).
         logging.info("YuE2Fast inputs: %s", json.dumps({
             "planning": planning, "cot": int(cot), "seed": seed, "max_abc_tokens": max_abc_tokens, "max_duration": max_duration,
-            "acoustic_steps": acoustic_steps, "guidance": guidance, "backend": backend, "instrumental": instrumental,
+            "acoustic_steps": acoustic_steps, "guidance": guidance, "backend": backend, "instrumental": instrumental, "vocals_only": vocals_only,
             "lora_on": bool(lora_on), "lora_ar_scale": lora_ar_scale, "lora_nar_scale": lora_nar_scale,
             "style": style[:200], "lyrics_chars": len(lyrics), "lyrics_head": lyrics[:120],
             "abc_chars": len(abc or "")}))
@@ -166,10 +174,10 @@ class YuE2FastSong:
             plan = attempt(pipe.plan, style=style, lyrics=plan_lyrics, cot=planning, seed=int(seed),
                            abc_sampling=abc_sampling, cancelled=mm.processing_interrupted)
             if plan.abc:
-                abc = make_instrumental(plan.abc)
+                abc = (make_vocals_only if vocals_only else make_instrumental)(plan.abc)
                 if not explicit_cot:
                     planning = "full" if re.search(r'"[^"]+"', abc.split("K:", 1)[-1]) else "melody"
-                logging.info("YuE2Fast instrumental: planned %d score tokens, vocal voice stripped", len(plan.abc_ids))
+                logging.info("YuE2Fast %s: planned %d score tokens, voices stripped", "vocals-only" if vocals_only else "instrumental", len(plan.abc_ids))
         kwargs = dict(style=style, lyrics=lyrics, cot=planning, seed=int(seed), abc=abc,
                       cfg_scale=None if guidance == 0 else float(guidance),
                       abc_sampling=abc_sampling,
