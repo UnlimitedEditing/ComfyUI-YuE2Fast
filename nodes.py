@@ -93,7 +93,7 @@ class YuE2FastSong:
             "seed": ("INT", {"default": 831001, "min": 0, "max": 0x7FFFFFFFFFFFFFFF}),
             "max_abc_tokens": ("INT", {"default": 3072, "min": 64, "max": 8192, "tooltip": "Ceiling on score tokens. Long lyric sheets need more."}),
             "max_duration": ("INT", {"default": 120, "min": 10, "max": 360, "tooltip": "Ceiling in seconds (25 music tokens/s). The model usually ends earlier."}),
-            "acoustic_steps": ("INT", {"default": 32, "min": 1, "max": 64}),
+            "acoustic_steps": ("INT", {"default": 32, "min": 1, "max": 128}),
         }, "optional": {
             "temperature": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 5.0, "step": 0.05}),
             "top_p": ("FLOAT", {"default": 0.95, "min": 0.01, "max": 1.0, "step": 0.01}),
