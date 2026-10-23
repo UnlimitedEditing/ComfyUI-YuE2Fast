@@ -104,16 +104,23 @@ class YuE2FastSong:
             # Optional so workflows saved before this input existed still validate.
             "abc": ("STRING", {"forceInput": True, "tooltip": "Supplied score (e.g. from YuE2 Fast Transcribe). Skips score planning; use planning=melody for covers."}),
             "instrumental": ("INT", {"default": 0, "min": 0, "max": 2, "tooltip": "2 = vocals only (a cappella): the score's instrument voice becomes rests, chord symbols are dropped from the vocal line, the style says a cappella / no instruments, lyrics are kept. 1 = force an instrumental: the score's V: Vocal voice becomes rests (chords kept), vocal sections become interlude, lyrics are dropped and the style says so. Without a supplied score, the score is planned first (using your lyrics as a section skeleton) and then stripped."}),
-            "lora_on": ("INT", {"default": 0, "min": 0, "max": 1, "tooltip": "1 = apply the Two Steps From Hell LoRA pair (AR + NAR, epic orchestral trailer music) as forward-time deltas; 0 = base model."}),
-            "lora_ar_scale": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.05, "tooltip": "AR (planning) adapter strength: structure, melody, genre."}),
-            "lora_nar_scale": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.05, "tooltip": "NAR (synthesis) adapter strength: the acoustic texture/timbre. 0.3-0.7 is the adapter author's recommended range."}),
+            "lora_on": ("INT", {"default": 0, "min": 0, "max": 2, "tooltip": "1 = Two Steps From Hell LoRA pair (AR + NAR, epic orchestral trailer music). 2 = Instrumental-CoT LoRA (AR only): instrumentals planned from section tags in `lyrics` ([instrumental] / [intro] [verse]... / [intro 0:00-0:15]...), forces cot=full, no voice stripping. 0 = base model. Applied as forward-time deltas."}),
+            "lora_ar_scale": ("FLOAT", {"default": -1.0, "min": -1.0, "max": 1.0, "step": 0.05, "tooltip": "AR (planning) adapter strength. -1 = the adapter's recommended (SFH 0.5, instrumental-cot 1.0)."}),
+            "lora_nar_scale": ("FLOAT", {"default": -1.0, "min": -1.0, "max": 1.0, "step": 0.05, "tooltip": "NAR (synthesis) strength, Two Steps From Hell only (0.3-0.7 recommended). -1 = its default 0.5. Ignored by instrumental-cot."}),
             "cot": ("INT", {"default": 0, "min": 0, "max": 3, "tooltip": "Score-planning mode as a number (Graydient slots 4-8 are numeric only). 0 = auto (the `planning` widget for text mode; for a supplied score: chord symbols -> full, else melody). 1 = full (melody + chords). 2 = melody only. 3 = off (no score at all: a supplied score is ignored and only style/lyrics/seed are used)."}),
         }}
 
     def generate(self, style, lyrics, planning, seed, max_abc_tokens, max_duration, acoustic_steps,
                  temperature=1.0, top_p=0.95, top_k=100, repetition_penalty=1.2, guidance=0.0, backend="torch", abc=None,
-                 instrumental=0, lora_on=0, lora_ar_scale=0.5, lora_nar_scale=0.5, cot=0):
+                 instrumental=0, lora_on=0, lora_ar_scale=-1.0, lora_nar_scale=-1.0, cot=0):
         abc = (abc or "").strip() or None
+        lora_on = int(lora_on)
+        if lora_on == 2:
+            # Instrumental-CoT LoRA: the model plans its own score from tag-only lyrics. Wants cot=full, a
+            # supplied score is ignored (it plans its own), and the voice-stripping path must stay off.
+            from .abc_input import clean_section_plan
+            lyrics = clean_section_plan(lyrics)
+            cot, abc, instrumental = 1, None, 0
         explicit_cot = {1: "full", 2: "melody", 3: "off"}.get(int(cot))
         if explicit_cot:
             planning = explicit_cot
@@ -153,7 +160,8 @@ class YuE2FastSong:
             "abc_chars": len(abc or "")}))
         pipe = _pipeline(backend)
         if lora_on:
-            LORA.apply_lora(pipe._load_model(), "two-steps-from-hell", lora_ar_scale, lora_nar_scale)
+            LORA.apply_lora(pipe._load_model(), {1: "two-steps-from-hell", 2: "instrumental-cot"}[lora_on],
+                            lora_ar_scale, lora_nar_scale)
         else:
             LORA.disable_all(pipe._load_model())
         pipe.generation_config = dataclasses.replace(pipe.generation_config, ode_steps=int(acoustic_steps))

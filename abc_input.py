@@ -191,3 +191,20 @@ def vocals_only_style(style):
     if not _NO_INSTRUMENTS.search(lowered):
         parts += ["a cappella", "solo vocals", "no instruments"]
     return ", ".join(parts)
+
+
+_PLAN_TAG = re.compile(r"^\[\s*(intro|verse|pre-chorus|chorus|bridge|outro)(?:\s+(\d+:\d{2})\s*-\s*(\d+:\d{2}))?\s*\]$", re.I)
+
+
+def clean_section_plan(lyrics):
+    """Normalise lyrics for the instrumental-cot LoRA: one lowercase tag per line, optional m:ss-m:ss
+    timings, nothing else (the LoRA never saw lyric text, notes or literal backslash-n). Anything
+    unusable -> the bare "[instrumental]" caption."""
+    text = (lyrics or "").replace("\n", "\n").replace("@@", "\n")
+    lines = []
+    for raw in text.splitlines():
+        m = _PLAN_TAG.match(raw.strip())
+        if m:
+            tag = m.group(1).lower()
+            lines.append(f"[{tag} {m.group(2)}-{m.group(3)}]" if m.group(2) else f"[{tag}]")
+    return "\n".join(lines) or "[instrumental]"

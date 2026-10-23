@@ -17,6 +17,16 @@ ADAPTERS = {
     "two-steps-from-hell": {
         "repo": "monsterovich/yue2-steps-from-hell",
         "stages": {"ar": "adapter-ar-195/lora.safetensors", "nar": "adapter-nar-194/lora.safetensors"},
+        "default_scales": (0.5, 0.5),
+    },
+    # Mothersuperior/YuE2-instrumental-cot-full-loras: AR-only, rank 64, no alpha (delta scale 1.0), keys
+    # lack the "model." prefix. Meant for cot=full with [intro 0:00-0:15]-style section tags as lyrics.
+    "instrumental-cot": {
+        "repo": "Mothersuperior/YuE2-instrumental-cot-full-loras",
+        "stages": {"ar": "ar_lora_inst_v3abc.bf16.safetensors"},
+        "key_prefix": "model.",
+        "coef": 1.0,
+        "default_scales": (1.0, 0.0),
     },
 }
 
@@ -55,12 +65,15 @@ def _make_hook(a, b, coef, scale_box, stage):
     return hook
 
 
-def _install_stage(model, repo, rel, stage, scale_box):
-    subdir = rel.rsplit("/", 1)[0]
+def _install_stage(model, repo, rel, stage, scale_box, key_prefix="", fixed_coef=None):
     weights = load_file(hf_hub_download(repo, rel))
-    with open(hf_hub_download(repo, f"{subdir}/adapter_config.json"), encoding="utf-8") as fh:
-        config = json.load(fh)
-    coef = float(config["alpha"]) / int(config["rank"])
+    if fixed_coef is not None:
+        coef = float(fixed_coef)
+    else:
+        subdir = rel.rsplit("/", 1)[0]
+        with open(hf_hub_download(repo, f"{subdir}/adapter_config.json"), encoding="utf-8") as fh:
+            config = json.load(fh)
+        coef = float(config["alpha"]) / int(config["rank"])
     pairs = {}
     for key, tensor in weights.items():
         for suffix in (".lora_A", ".lora_B"):
@@ -71,16 +84,17 @@ def _install_stage(model, repo, rel, stage, scale_box):
     for path, factors in sorted(pairs.items()):
         if "A" not in factors or "B" not in factors:
             raise RuntimeError(f"YuE2Fast LoRA: incomplete factor pair for {path} in {repo}/{rel}")
-        module = model.get_submodule(path)
+        module = model.get_submodule(key_prefix + path)
         module.register_forward_hook(
             _make_hook(factors["A"].to(torch.float32), factors["B"].to(torch.float32), coef, scale_box, stage))
         installed += 1
     logging.info("YuE2Fast LoRA: %s/%s -> %d modules adapted (alpha/rank=%g)", repo, rel, installed, coef)
 
 
-def apply_lora(model, name, ar_scale, nar_scale):
+def apply_lora(model, name, ar_scale=-1.0, nar_scale=-1.0):
     """Install (once per model instance) the named adapter pair and set its scales for this call.
 
+    A negative scale means "this adapter's recommended default" (ADAPTERS[name]["default_scales"]).
     ar_scale/nar_scale of 0 reproduces the plain base model for that stage, matching the upstream
     demo's own convention. Subsequent calls on the same model just update the scales -- the hooks
     stay registered.
@@ -92,10 +106,14 @@ def apply_lora(model, name, ar_scale, nar_scale):
         spec = ADAPTERS[name]
         scale_box = {"ar": 0.0, "nar": 0.0}
         for stage, rel in spec["stages"].items():
-            _install_stage(model, spec["repo"], rel, stage, scale_box)
+            _install_stage(model, spec["repo"], rel, stage, scale_box,
+                           spec.get("key_prefix", ""), spec.get("coef"))
         by_model[name] = scale_box
+    disable_all(model)  # only one adapter active per call
+    d_ar, d_nar = ADAPTERS[name]["default_scales"]
     scale_box = by_model[name]
-    scale_box["ar"], scale_box["nar"] = float(ar_scale), float(nar_scale)
+    scale_box["ar"] = d_ar if ar_scale < 0 else float(ar_scale)
+    scale_box["nar"] = d_nar if nar_scale < 0 else float(nar_scale)
 
 
 def disable_all(model):
